@@ -5,6 +5,7 @@ Self-hosted Discord bot that bridges arbitrary text channels across multiple gui
 - **One bot, many guilds, many rooms.** A *room* is a named group of channels across guilds that mirror each other.
 - **Operator-controlled federation.** The host operator (you) issues a single-use token per Discord server you want to admit. Without a valid token, no server can join — even if they know the room name.
 - **Webhook fan-out.** Relayed messages display the original sender's name + avatar in the form `From <Server> / <Member>` — not "Bot says...".
+- **Public membership announcements.** When a server joins, leaves, or is kicked from a room, all participating channels see a one-line system message (`**New Channel joined - <Server>**`, `**Channel left - <Server>**`, `**Channel removed - <Server>**`) under the `RDOC-LC` system identity.
 - **Near-realtime.** Single Discord Gateway connection (push), in-memory channel-to-room cache (no Redis read on the hot path), webhook fan-out via `Promise.all`. Typical source-to-target latency: 150–500 ms.
 
 ## Security model

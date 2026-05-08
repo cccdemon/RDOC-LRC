@@ -4,7 +4,10 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = 
 const rooms = require('./rooms');
 const tokens = require('./tokens');
 const audit = require('./audit');
+const announcer = require('./announcer');
 const { log, logErr } = require('./log');
+
+function shortName(s) { return String(s || '').slice(0, 80); }
 
 const ROOM_NAME_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
@@ -120,6 +123,9 @@ async function handleJoin(interaction) {
     joiningChannel: channel,
   }).catch(e => logErr('Audit', e.message));
 
+  announcer.broadcastSystem(room, `**New Channel joined - ${shortName(interaction.guild.name)}**`)
+    .catch(e => logErr('System', e.message));
+
   return reply(interaction, `Linked #${channel.name} to room "${room}". This room now has ${total} channel(s) across all servers.`);
 }
 
@@ -127,6 +133,9 @@ async function handleLeave(interaction) {
   const channel = interaction.channel;
   const entry = rooms.getChannel(channel.id);
   if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+
+  await announcer.broadcastSystem(entry.room, `**Channel left - ${shortName(interaction.guild.name)}**`)
+    .catch(e => logErr('System', e.message));
 
   try {
     const wh = await interaction.client.fetchWebhook(entry.webhookId).catch(() => null);
@@ -223,6 +232,10 @@ async function handleKick(interaction) {
     executedByGuildId: interaction.guildId,
     executedByUserId: interaction.user.id,
   }).catch(e => logErr('Audit', e.message));
+
+  const targetGuildName = targets[0] && interaction.client.guilds?.cache?.get(targetGuildId)?.name;
+  await announcer.broadcastSystem(room, `**Channel removed - ${shortName(targetGuildName || targetGuildId)}**`)
+    .catch(e => logErr('System', e.message));
 
   let removed = 0;
   for (const t of targets) {

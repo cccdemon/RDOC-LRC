@@ -46,6 +46,7 @@ Single Node.js process. No HTTP exposure beyond `/health`. No PostgreSQL.
 | `rooms.js`      | Redis-backed room registry. `initRooms(redis)` populates in-memory `channelMap` / `roomMembers` / `webhookClients`. Mutations (`join`, `leave`) update Redis + cache atomically. Also stores per-guild audit channel. |
 | `tokens.js`     | Token registry. `create` / `createKick` / `consume` / `consumeKick` (each via its own atomic Redis Lua script, distinguished by the `kind` HASH field). `revoke` / `list` / `sweepExpired`. Token format regex + alphabet defined here. |
 | `audit.js`      | `init(client)` + helpers (`tokenConsumed`, `channelLeft`, `webhookError`, `serverKicked`). Looks up each recipient's audit channel via `rooms.getGuildAuditChannel`. Failures are caught and logged; never block operations. |
+| `announcer.js`  | `broadcastSystem(room, content)`. Public membership announcement helper — sends a webhook message to every channel in `room` under the `RDOC-LC` system username. Used by `/bridge join`, `/bridge leave`, `/bridge kick`. Errors per target are logged; never throws. |
 | `bin/admin.js`  | CLI tool. Connects to Redis, runs subcommand, exits. Subcommands: `token create / create-kick / list / revoke`, `room list / members`. |
 | `log.js`        | `log(tag, ...)` / `logErr(tag, ...)` helpers — never raw `console.log`. |
 
@@ -100,6 +101,20 @@ Required: `Guilds`, `GuildMessages`, `MessageContent` (privileged), `GuildWebhoo
 `/bridge kick` consumes a kick token whose payload encodes both the room and the target guild. The runner's guild does not need to be in the room — anyone with the token + Manage Channels in any guild can execute it. The slash command runner's identity is logged in the audit embed for accountability. The kick removes ALL of the target guild's channel bindings in the specified room and deletes their webhooks; failures during webhook deletion are logged but do not block the in-Redis state cleanup.
 
 `/bridge rooms` is **scoped** to the caller's guild — only rooms this guild participates in are shown. Per-room counts include this-guild count and total-across-all-guilds count, since the executing guild is already a member.
+
+## Public membership announcements
+
+When a server joins, leaves, or is kicked, `announcer.broadcastSystem(room, content)` posts a one-line message to every channel in the room under the `RDOC-LC` system username (distinct from relay messages, which use `From <guild> / <member>`).
+
+| Slash command | When the announcement fires | Message |
+|---|---|---|
+| `/bridge join`  | after `rooms.join(...)` so the new channel's webhook is in the cache and receives it too | `**New Channel joined - <Server>**` |
+| `/bridge leave` | **before** webhook deletion, so the leaving channel still sees its own goodbye | `**Channel left - <Server>**` |
+| `/bridge kick`  | **before** webhook deletion of any of the kicked guild's channels, after the audit dispatch | `**Channel removed - <Server>**` |
+
+The kick announcement resolves the target guild's name from `client.guilds.cache.get(targetGuildId)`. If the bot is not in the kicked guild's cache (e.g. it left after kick processing began), the announcement falls back to the raw guild ID.
+
+`allowedMentions: { parse: [] }` ensures no @everyone / role / user pings ever leak via system announcements.
 
 ## Audit policy
 
