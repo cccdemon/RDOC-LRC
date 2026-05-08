@@ -1,0 +1,99 @@
+'use strict';
+
+const { Client, GatewayIntentBits, Partials, REST, Routes } = require('discord.js');
+const { commands, handleInteraction } = require('./commands');
+const rooms = require('./rooms');
+const { log, logErr } = require('./log');
+
+let client = null;
+let ready = false;
+
+async function startBot({ token, appId }) {
+  client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildWebhooks,
+    ],
+    partials: [Partials.Channel, Partials.Message],
+  });
+
+  client.once('ready', async (c) => {
+    log('Discord', `Logged in as ${c.user.tag} — ${c.guilds.cache.size} guild(s)`);
+    ready = true;
+    await registerCommands({ token, appId });
+  });
+
+  client.on('messageCreate', (m) => onMessage(m).catch(e => logErr('Relay', e.message)));
+  client.on('interactionCreate', (i) => handleInteraction(i).catch(e => logErr('Interaction', e.message)));
+  client.on('error', (e) => logErr('Discord', e.message));
+  client.on('shardError', (e) => logErr('Shard', e.message));
+
+  await client.login(token);
+}
+
+async function onMessage(message) {
+  if (!message.guild) return;
+  if (message.author?.bot) return;
+  if (message.webhookId) return;
+  if (message.system) return;
+
+  const entry = rooms.getChannel(message.channelId);
+  if (!entry) return;
+
+  const targets = rooms.getRoomMembers(entry.room).filter(m => m.channelId !== message.channelId);
+  if (targets.length === 0) return;
+
+  const displayName = message.member?.displayName || message.author.username;
+  const avatarURL =
+    (typeof message.member?.displayAvatarURL === 'function' ? message.member.displayAvatarURL() : null) ||
+    (typeof message.author.displayAvatarURL === 'function' ? message.author.displayAvatarURL() : undefined);
+
+  const files = message.attachments.size > 0
+    ? [...message.attachments.values()].map(a => a.url)
+    : undefined;
+
+  const payload = {
+    username: `${displayName} · ${message.guild.name}`.slice(0, 80),
+    avatarURL,
+    content: message.content || undefined,
+    files,
+    allowedMentions: { parse: [] },
+  };
+
+  if (!payload.content && !payload.files) return;
+
+  const t0 = Date.now();
+  await Promise.all(targets.map(t => sendToTarget(t, payload).catch(e => {
+    logErr('Relay', `-> ${t.guildId}/${t.channelId}: ${e.message}`);
+  })));
+  log('Relay', `[${entry.room}] ${displayName}@${message.guild.name} -> ${targets.length} target(s) (${Date.now() - t0}ms)`);
+}
+
+async function sendToTarget(target, payload) {
+  const wh = rooms.getWebhookClient(target.channelId);
+  if (!wh) throw new Error('webhook client missing');
+  await wh.send(payload);
+}
+
+function getBotStatus() {
+  return {
+    ready,
+    guilds: client?.guilds?.cache?.size ?? 0,
+  };
+}
+
+async function registerCommands({ token, appId }) {
+  try {
+    const rest = new REST({ version: '10' }).setToken(token);
+    await rest.put(Routes.applicationCommands(appId), { body: commands.map(c => c.toJSON()) });
+    log('Commands', `Registered ${commands.length} global slash command(s)`);
+  } catch (e) {
+    logErr('Commands', `Register failed: ${e.message}`);
+  }
+}
+
+function getClient() { return client; }
+
+module.exports = { startBot, getBotStatus, getClient };

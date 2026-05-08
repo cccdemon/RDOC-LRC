@@ -1,0 +1,18 @@
+{
+  "name": "rdoc-lc",
+  "version": "0.1.0",
+  "description": "Raumdock-Longrange-Communicator (RDOC-LC) — multi-server, multi-room Discord bridge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "ioredis": "^5.3.2",
+    "express": "^4.18.2"
+  }
+}

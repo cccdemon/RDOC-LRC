@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rdoc-lc-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    networks: [rdoc-lc]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  bot:
+    build: .
+    container_name: rdoc-lc-bot
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DISCORD_APP_ID: ${DISCORD_APP_ID}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      PORT: "3007"
+      TZ: ${TZ:-Europe/Berlin}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [rdoc-lc]
+    ports:
+      - "3007:3007"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3007/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  rdoc-lc:
+    driver: bridge
