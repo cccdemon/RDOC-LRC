@@ -173,3 +173,9 @@ CLI against a non-Docker Redis:
 ```bash
 REDIS_HOST=127.0.0.1 npm run admin -- token create alliance-chat
 ```
+
+## License
+
+GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). See [LICENSE](LICENSE) for the full text.
+
+The Affero clause matters here: if you run a modified version of RDOC-LC as a network service that other people interact with (over Discord, HTTP, anything), you must offer those users the corresponding source of your modified version. Plain GPL would not require that for hosted-service use; AGPL closes that gap.
