@@ -4,7 +4,7 @@ Self-hosted Discord bot that bridges arbitrary text channels across multiple gui
 
 - **One bot, many guilds, many rooms.** A *room* is a named group of channels across guilds that mirror each other.
 - **Operator-controlled federation.** The host operator (you) issues a single-use token per Discord server you want to admit. Without a valid token, no server can join — even if they know the room name.
-- **Webhook fan-out.** Relayed messages display the original sender's name + avatar — not "Bot says...".
+- **Webhook fan-out.** Relayed messages display the original sender's name + avatar in the form `From <Server> / <Member>` — not "Bot says...".
 - **Near-realtime.** Single Discord Gateway connection (push), in-memory channel-to-room cache (no Redis read on the hot path), webhook fan-out via `Promise.all`. Typical source-to-target latency: 150–500 ms.
 
 ## Security model
@@ -77,9 +77,10 @@ docker exec rdoc-lc-bot node bin/admin.js <subcommand>
 
 | Subcommand | Purpose |
 |---|---|
-| `token create <room> [--guild=<id>] [--expires-h=<n>]` | Generate a single-use token. Default expiry 168h. |
-| `token list [--room=<name>]` | List active (unconsumed) tokens. |
-| `token revoke <prefix>` | Revoke an unconsumed token by 8+ char prefix. Errors if ambiguous. |
+| `token create <room> [--guild=<id>] [--expires-h=<n>]` | Generate a single-use **join** token. Default expiry 168h. |
+| `token create-kick <room> <target-guild-id> [--expires-h=<n>]` | Generate a single-use **kick** token. Whoever runs `/bridge kick <token>` removes the target guild from the room. |
+| `token list [--room=<name>]` | List active (unconsumed) tokens with kind, room, expiry, and binding/target. |
+| `token revoke <prefix>` | Revoke an unconsumed token (join or kick) by 8+ char prefix. Errors if ambiguous. |
 | `room list` | All rooms + member counts. |
 | `room members <room>` | List `guildId:channelId` entries in a room. |
 
@@ -92,6 +93,7 @@ docker exec rdoc-lc-bot node bin/admin.js <subcommand>
 | `/bridge list` | Channels in this server linked to bridge rooms. |
 | `/bridge rooms` | Bridge rooms **this server** participates in (scoped). |
 | `/bridge audit-channel [channel]` | Set or clear (omit `channel`) this server's audit log channel. |
+| `/bridge kick <token>` | Remove a server from a bridge room. Token (issued by the operator) specifies which room and which guild to remove. |
 
 All require **Manage Channels**. Room-name rule: `^[a-z0-9][a-z0-9-]{1,30}$`.
 
@@ -101,7 +103,8 @@ If a guild has set an audit channel via `/bridge audit-channel`, it receives:
 
 | Event | When |
 |---|---|
-| **Server joined room** | When any guild consumes a token to join a room this guild participates in. Cross-guild broadcast. |
+| **Server joined room** | When any guild consumes a join token to join a room this guild participates in. Cross-guild broadcast. |
+| **Server kicked from room** | When a kick token is consumed against a guild in a room this guild participates in. Cross-guild broadcast (also reaches the kicked guild). |
 | **Channel unlinked** | When a channel in this guild runs `/bridge leave`. Scoped to leaving guild only. |
 | **Webhook send failed** | When a relay outbound from this guild's channel fails. Scoped to source guild only. |
 
@@ -143,7 +146,7 @@ Redis only.
 | `rdoc:room:<name>:members` | SET | `"<guildId>:<channelId>"` for each member |
 | `rdoc:channel:<channelId>` | HASH | `{ room, guildId, webhookUrl, webhookId }` |
 | `rdoc:tokens` | SET | All active (unconsumed) tokens |
-| `rdoc:token:<token>` | HASH | `{ room, guildId?, createdAt, expiresAt }` |
+| `rdoc:token:<token>` | HASH | `{ kind: 'join'\|'kick', room, guildId?, targetGuildId?, createdAt, expiresAt }` |
 | `rdoc:room:<room>:tokens` | SET | Active tokens for this room |
 | `rdoc:guild:<guildId>:audit_channel` | STRING | Configured audit channel ID (nullable) |
 
@@ -154,8 +157,7 @@ Token consumption is atomic via a Redis Lua script — no race condition between
 - Edits and deletes are not propagated.
 - Stickers, voice messages, replies-as-quotes, custom-emoji rewriting are passed through as-is or stripped.
 - Cross-guild @mentions never resolve — Discord shows them as raw IDs. Mentions are also disabled on relayed messages so the bot can't ping anyone via a relay.
-- No moderation features (banlist, slowmode, anti-spam) — rely on each guild's native moderation tools.
-- No `kick` slash command for removing a participating guild from a room — operator can do this manually via Redis if needed (a CLI helper is a future addition).
+- No moderation features inside the bridge stream (slowmode, anti-spam) — rely on each guild's native moderation tools. Removing an entire guild from a room is supported via `/bridge kick <token>` (token issued by the operator).
 
 ## Local development (without Docker)
 

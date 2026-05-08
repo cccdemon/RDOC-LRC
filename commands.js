@@ -39,7 +39,13 @@ const commands = [
         .setName('channel')
         .setDescription('Text channel to receive audit events (omit to clear)')
         .addChannelTypes(ChannelType.GuildText)
-        .setRequired(false))),
+        .setRequired(false)))
+    .addSubcommand(sub => sub
+      .setName('kick')
+      .setDescription('Remove a server from a bridge room (requires a kick token from the operator)')
+      .addStringOption(o => o.setName('token')
+        .setDescription('Kick token (rdoc-XXXX-XXXX-XXXX-XXXX) issued via the operator CLI')
+        .setRequired(true))),
 ];
 
 async function handleInteraction(interaction) {
@@ -53,6 +59,7 @@ async function handleInteraction(interaction) {
     case 'list':           return handleList(interaction);
     case 'rooms':          return handleRooms(interaction);
     case 'audit-channel':  return handleAuditChannel(interaction);
+    case 'kick':           return handleKick(interaction);
     default:               return reply(interaction, `Unknown subcommand: ${sub}`);
   }
 }
@@ -179,6 +186,58 @@ async function handleAuditChannel(interaction) {
   await rooms.setGuildAuditChannel(interaction.guildId, target.id);
   log('Audit', `set for guild=${interaction.guildId} -> channel=${target.id}`);
   return reply(interaction, `Audit channel set to <#${target.id}>. Bridge events for rooms this server participates in will be posted there.`);
+}
+
+async function handleKick(interaction) {
+  const token = interaction.options.getString('token', true).trim();
+
+  if (!tokens.isValidFormat(token)) {
+    return reply(interaction, 'Invalid token format. Expected `rdoc-XXXX-XXXX-XXXX-XXXX`.');
+  }
+
+  let data;
+  try {
+    data = await tokens.consumeKick({ token });
+  } catch (e) {
+    const msg = ({
+      NOT_FOUND:   'Invalid or already-used token.',
+      EXPIRED:     'This token has expired.',
+      WRONG_KIND:  'This is a join token, not a kick token. Ask the operator for a kick token.',
+    })[e.code] || `Token validation failed: ${e.message}`;
+    logErr('Kick', `token rejected (${e.code || 'ERR'})`);
+    return reply(interaction, msg);
+  }
+
+  const room = data.room;
+  const targetGuildId = data.targetGuildId;
+  const targets = rooms.getRoomMembers(room).filter(m => m.guildId === targetGuildId);
+
+  if (targets.length === 0) {
+    log('Kick', `[${room}] guild=${targetGuildId} not in room (token consumed)`);
+    return reply(interaction, `Token was valid but guild \`${targetGuildId}\` has no channels in room "${room}".`);
+  }
+
+  audit.serverKicked({
+    room,
+    targetGuildId,
+    executedByGuildId: interaction.guildId,
+    executedByUserId: interaction.user.id,
+  }).catch(e => logErr('Audit', e.message));
+
+  let removed = 0;
+  for (const t of targets) {
+    try {
+      const wh = await interaction.client.fetchWebhook(t.webhookId).catch(() => null);
+      if (wh) await wh.delete('Kicked from RDOC-LC bridge room');
+    } catch (e) {
+      logErr('Kick', `webhook delete failed for ${t.channelId}: ${e.message}`);
+    }
+    await rooms.leave(t.channelId);
+    removed++;
+  }
+
+  log('Kick', `[${room}] guild=${targetGuildId} removed (${removed} channel(s)) by ${interaction.user.tag}@${interaction.guild.name}`);
+  return reply(interaction, `Removed ${removed} channel(s) of guild \`${targetGuildId}\` from room "${room}".`);
 }
 
 function reply(interaction, content) {

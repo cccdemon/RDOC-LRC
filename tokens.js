@@ -38,6 +38,7 @@ async function create({ room, guildId, expiresInMs }) {
   const expiresAt = now + expiresInMs;
 
   const data = {
+    kind: 'join',
     room,
     createdAt: String(now),
     expiresAt: String(expiresAt),
@@ -51,10 +52,33 @@ async function create({ room, guildId, expiresInMs }) {
   tx.pexpireat(kToken(token), expiresAt);
   await tx.exec();
 
-  return { token, room, guildId: data.guildId || null, createdAt: now, expiresAt };
+  return { token, kind: 'join', room, guildId: data.guildId || null, createdAt: now, expiresAt };
 }
 
-const CONSUME_LUA = `
+async function createKick({ room, targetGuildId, expiresInMs }) {
+  const token = generateToken();
+  const now = Date.now();
+  const expiresAt = now + expiresInMs;
+
+  const data = {
+    kind: 'kick',
+    room,
+    targetGuildId: String(targetGuildId),
+    createdAt: String(now),
+    expiresAt: String(expiresAt),
+  };
+
+  const tx = redis.multi();
+  tx.hset(kToken(token), data);
+  tx.sadd(K_TOKENS, token);
+  tx.sadd(kRoomTokens(room), token);
+  tx.pexpireat(kToken(token), expiresAt);
+  await tx.exec();
+
+  return { token, kind: 'kick', room, targetGuildId: data.targetGuildId, createdAt: now, expiresAt };
+}
+
+const CONSUME_JOIN_LUA = `
 local tokenKey = KEYS[1]
 local tokensSet = KEYS[2]
 local token = ARGV[1]
@@ -69,6 +93,11 @@ end
 local data = redis.call('HGETALL', tokenKey)
 local map = {}
 for i = 1, #data, 2 do map[data[i]] = data[i+1] end
+
+local kind = map['kind']
+if kind and kind ~= 'join' then
+  return redis.error_reply('WRONG_KIND')
+end
 
 local expiresAt = tonumber(map['expiresAt'])
 if expiresAt and expiresAt < now then
@@ -95,6 +124,41 @@ redis.call('SREM', 'rdoc:room:' .. map['room'] .. ':tokens', token)
 return data
 `;
 
+const CONSUME_KICK_LUA = `
+local tokenKey = KEYS[1]
+local tokensSet = KEYS[2]
+local token = ARGV[1]
+local now = tonumber(ARGV[2])
+
+if redis.call('EXISTS', tokenKey) == 0 then
+  return redis.error_reply('NOT_FOUND')
+end
+
+local data = redis.call('HGETALL', tokenKey)
+local map = {}
+for i = 1, #data, 2 do map[data[i]] = data[i+1] end
+
+if map['kind'] ~= 'kick' then
+  return redis.error_reply('WRONG_KIND')
+end
+
+local expiresAt = tonumber(map['expiresAt'])
+if expiresAt and expiresAt < now then
+  redis.call('DEL', tokenKey)
+  redis.call('SREM', tokensSet, token)
+  if map['room'] then
+    redis.call('SREM', 'rdoc:room:' .. map['room'] .. ':tokens', token)
+  end
+  return redis.error_reply('EXPIRED')
+end
+
+redis.call('DEL', tokenKey)
+redis.call('SREM', tokensSet, token)
+redis.call('SREM', 'rdoc:room:' .. map['room'] .. ':tokens', token)
+
+return data
+`;
+
 class TokenError extends Error {
   constructor(code, message) { super(message || code); this.code = code; }
 }
@@ -103,13 +167,33 @@ async function consume({ token, room, guildId }) {
   let result;
   try {
     result = await redis.eval(
-      CONSUME_LUA, 2,
+      CONSUME_JOIN_LUA, 2,
       kToken(token), K_TOKENS,
       token, String(Date.now()), room, String(guildId)
     );
   } catch (e) {
     const code = (e?.message || '').trim();
-    if (['NOT_FOUND', 'EXPIRED', 'ROOM_MISMATCH', 'GUILD_MISMATCH'].includes(code)) {
+    if (['NOT_FOUND', 'EXPIRED', 'ROOM_MISMATCH', 'GUILD_MISMATCH', 'WRONG_KIND'].includes(code)) {
+      throw new TokenError(code);
+    }
+    throw e;
+  }
+  const map = {};
+  for (let i = 0; i < result.length; i += 2) map[result[i]] = result[i + 1];
+  return map;
+}
+
+async function consumeKick({ token }) {
+  let result;
+  try {
+    result = await redis.eval(
+      CONSUME_KICK_LUA, 2,
+      kToken(token), K_TOKENS,
+      token, String(Date.now())
+    );
+  } catch (e) {
+    const code = (e?.message || '').trim();
+    if (['NOT_FOUND', 'EXPIRED', 'WRONG_KIND'].includes(code)) {
       throw new TokenError(code);
     }
     throw e;
@@ -129,8 +213,10 @@ async function list({ room } = {}) {
     if (!data || !data.room) continue;
     out.push({
       token,
+      kind: data.kind || 'join',
       room: data.room,
       guildId: data.guildId || null,
+      targetGuildId: data.targetGuildId || null,
       createdAt: Number(data.createdAt),
       expiresAt: Number(data.expiresAt),
     });
@@ -181,6 +267,8 @@ async function sweepExpired() {
 
 module.exports = {
   init, generateToken, isValidFormat,
-  create, consume, list, revoke, sweepExpired,
+  create, createKick,
+  consume, consumeKick,
+  list, revoke, sweepExpired,
   TokenError, TOKEN_RE,
 };

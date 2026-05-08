@@ -21,14 +21,16 @@ Single Node.js process. No HTTP exposure beyond `/health`. No PostgreSQL.
 - **Room**: named group of channels across guilds that mirror each other.
 - **Channel binding**: one channel ↔ at most one room. Stored as `{ guildId, channelId, webhookUrl, webhookId, room }`.
 - **Webhook fan-out**: relayed messages are sent through per-target webhooks owned by the bot, so they display the original sender's name + avatar — not the bot.
-- **One-time token**: operator-generated single-use string of the form `rdoc-XXXX-XXXX-XXXX-XXXX` (Crockford base32, ~80 bits entropy). Bound to a room name; optionally bound to a specific guild ID. Required for `/bridge join`.
+- **One-time token**: operator-generated single-use string of the form `rdoc-XXXX-XXXX-XXXX-XXXX` (Crockford base32, ~80 bits entropy). Two kinds:
+  - **`join`**: bound to a room name; optionally bound to a specific guild ID. Required for `/bridge join`.
+  - **`kick`**: bound to a (room, target-guild-id) pair. Required for `/bridge kick`. Whoever runs the slash command in any guild executes the kick.
 - **Audit channel**: optional per-guild text channel that receives bridge events affecting rooms this guild participates in.
 
 ## Hot path (`messageCreate` → fan-out)
 
 1. Drop if `author.bot || webhookId || system`.
 2. Lookup `channelMap[message.channelId]` (in-memory `Map`, populated on boot from Redis). If not in a room, drop.
-3. Build webhook payload: `{ username: "<displayName> · <guildName>", avatarURL, content, files: attachment URLs, allowedMentions: { parse: [] } }`.
+3. Build webhook payload: `{ username: "From <guildName> / <displayName>", avatarURL, content, files: attachment URLs, allowedMentions: { parse: [] } }`. Username is truncated to 80 chars (Discord limit).
 4. `Promise.all(targets.map(t => webhookClients[t.channelId].send(payload)))`.
 5. On any send failure → fire-and-forget `audit.webhookError({ sourceGuildId, ... })` (scoped to source guild's audit channel).
 
@@ -40,11 +42,11 @@ Single Node.js process. No HTTP exposure beyond `/health`. No PostgreSQL.
 |---|---|
 | `server.js`     | Entry. Loads env, connects Redis, calls `initRooms`, `tokens.init`, `startBot`, starts express `/health`. |
 | `bot.js`        | discord.js client. `messageCreate` → `onMessage` (fan-out). `interactionCreate` → `commands.handleInteraction`. On `clientReady` registers slash commands and schedules `tokens.sweepExpired()` every 30 minutes. |
-| `commands.js`   | Slash command builders + `handleInteraction` switch. Subcommands: `join`, `leave`, `list`, `rooms`, `audit-channel`. All gated on `ManageChannels`. |
+| `commands.js`   | Slash command builders + `handleInteraction` switch. Subcommands: `join`, `leave`, `list`, `rooms`, `audit-channel`, `kick`. All gated on `ManageChannels`. |
 | `rooms.js`      | Redis-backed room registry. `initRooms(redis)` populates in-memory `channelMap` / `roomMembers` / `webhookClients`. Mutations (`join`, `leave`) update Redis + cache atomically. Also stores per-guild audit channel. |
-| `tokens.js`     | Token registry. `create`, `consume` (atomic via Redis Lua), `revoke`, `list`, `sweepExpired`. Token format regex + alphabet defined here. |
-| `audit.js`      | `init(client)` + helpers (`tokenConsumed`, `channelLeft`, `webhookError`). Looks up each recipient's audit channel via `rooms.getGuildAuditChannel`. Failures are caught and logged; never block operations. |
-| `bin/admin.js`  | CLI tool. Connects to Redis, runs subcommand, exits. Subcommands: `token create/list/revoke`, `room list/members`. |
+| `tokens.js`     | Token registry. `create` / `createKick` / `consume` / `consumeKick` (each via its own atomic Redis Lua script, distinguished by the `kind` HASH field). `revoke` / `list` / `sweepExpired`. Token format regex + alphabet defined here. |
+| `audit.js`      | `init(client)` + helpers (`tokenConsumed`, `channelLeft`, `webhookError`, `serverKicked`). Looks up each recipient's audit channel via `rooms.getGuildAuditChannel`. Failures are caught and logged; never block operations. |
+| `bin/admin.js`  | CLI tool. Connects to Redis, runs subcommand, exits. Subcommands: `token create / create-kick / list / revoke`, `room list / members`. |
 | `log.js`        | `log(tag, ...)` / `logErr(tag, ...)` helpers — never raw `console.log`. |
 
 ## Redis schema
@@ -54,23 +56,30 @@ Single Node.js process. No HTTP exposure beyond `/health`. No PostgreSQL.
 | `rdoc:rooms`                          | SET    | All room names |
 | `rdoc:room:<room>:members`            | SET    | `"<guildId>:<channelId>"` |
 | `rdoc:channel:<channelId>`            | HASH   | `{ room, guildId, webhookUrl, webhookId }` |
-| `rdoc:tokens`                         | SET    | All active (unconsumed) tokens |
-| `rdoc:token:<token>`                  | HASH   | `{ room, guildId?, createdAt, expiresAt }` (also has `PEXPIREAT` for safety) |
-| `rdoc:room:<room>:tokens`             | SET    | Active tokens for this room |
+| `rdoc:tokens`                         | SET    | All active (unconsumed) tokens (any kind) |
+| `rdoc:token:<token>`                  | HASH   | `{ kind: 'join'\|'kick', room, guildId?, targetGuildId?, createdAt, expiresAt }` (also has `PEXPIREAT` for safety) |
+| `rdoc:room:<room>:tokens`             | SET    | Active tokens for this room (both kinds) |
 | `rdoc:guild:<guildId>:audit_channel`  | STRING | Configured audit channel ID (nullable) |
 
-## Token consumption — atomic Lua script
+## Token consumption — atomic Lua scripts
 
-`tokens.consume({ token, room, guildId })` calls a Redis Lua script that:
+Two scripts, one per kind. Both are atomic; two simultaneous calls cannot both succeed.
 
-1. Checks token hash exists → else `NOT_FOUND`
-2. Reads expiry → if past, deletes token and returns `EXPIRED`
-3. Compares `room` field to expected → `ROOM_MISMATCH`
-4. If `guildId` field is set, compares to caller → `GUILD_MISMATCH`
-5. `DEL`s the token hash, removes from `rdoc:tokens` and `rdoc:room:<room>:tokens`
-6. Returns the hash data
+**`CONSUME_JOIN_LUA`** — used by `tokens.consume({ token, room, guildId })`:
+1. Token hash exists → else `NOT_FOUND`
+2. `kind` field is `'join'` or unset → else `WRONG_KIND`
+3. Expiry not past → else delete + `EXPIRED`
+4. `room` field matches expected → else `ROOM_MISMATCH`
+5. `guildId` field, if set, matches caller → else `GUILD_MISMATCH`
+6. `DEL` token hash, remove from `rdoc:tokens` and `rdoc:room:<room>:tokens`. Return hash data.
 
-Errors come back as `redis.error_reply(...)`; the JS wrapper translates them into a `TokenError` with a code field. Two simultaneous calls cannot both succeed — Redis runs the script atomically.
+**`CONSUME_KICK_LUA`** — used by `tokens.consumeKick({ token })`:
+1. Token hash exists → else `NOT_FOUND`
+2. `kind` field is `'kick'` → else `WRONG_KIND`
+3. Expiry not past → else delete + `EXPIRED`
+4. `DEL` + remove from sets. Return hash data containing `room` and `targetGuildId`.
+
+Errors come back as `redis.error_reply(...)`; the JS wrapper translates them into a `TokenError` with a code field.
 
 ## Sweep
 
@@ -86,13 +95,16 @@ Required: `Guilds`, `GuildMessages`, `MessageContent` (privileged), `GuildWebhoo
 
 ## Slash commands
 
-`/bridge join <room> <token>` / `leave` / `list` / `rooms` / `audit-channel <channel?>`. Registered globally on `clientReady` via REST. Default permission: `ManageChannels`. Replies are ephemeral (`MessageFlags.Ephemeral`).
+`/bridge join <room> <token>` / `leave` / `list` / `rooms` / `audit-channel <channel?>` / `kick <token>`. Registered globally on `clientReady` via REST. Default permission: `ManageChannels`. Replies are ephemeral (`MessageFlags.Ephemeral`).
+
+`/bridge kick` consumes a kick token whose payload encodes both the room and the target guild. The runner's guild does not need to be in the room — anyone with the token + Manage Channels in any guild can execute it. The slash command runner's identity is logged in the audit embed for accountability. The kick removes ALL of the target guild's channel bindings in the specified room and deletes their webhooks; failures during webhook deletion are logged but do not block the in-Redis state cleanup.
 
 `/bridge rooms` is **scoped** to the caller's guild — only rooms this guild participates in are shown. Per-room counts include this-guild count and total-across-all-guilds count, since the executing guild is already a member.
 
 ## Audit policy
 
 - `tokenConsumed` (server joined room) — broadcast to **all** guilds in the affected room (cross-guild).
+- `serverKicked` (server kicked from room) — broadcast to **all** guilds in the affected room (cross-guild). Recipient list is captured BEFORE the kick so the target guild also receives the audit message.
 - `channelLeft` — only the leaving guild.
 - `webhookError` — only the source guild.
 
@@ -121,7 +133,6 @@ Designed to be run with `docker exec rdoc-lc-bot node bin/admin.js ...` (or `npm
 - Replies-as-quotes, stickers, voice messages, embed re-rendering
 - Cross-guild emoji / mention rewriting
 - Web/admin UI
-- `/bridge kick` slash command for owner-side removal (CLI workaround: manually clear `rdoc:channel:<id>` + remove from `rdoc:room:<r>:members`)
 - Per-room rate limiting
 - Encryption of webhook URLs at rest
 
@@ -147,7 +158,10 @@ docker exec rdoc-lc-bot npm run admin -- <args>      # CLI inside container
    - Same as above; first token consumption creates the room. The CLI prints a `(NEW)` flag if the room doesn't yet exist.
 3. **Revoke a leaked or unwanted token.**
    - `docker exec rdoc-lc-bot npm run admin -- token list` to find the prefix.
-   - `docker exec rdoc-lc-bot npm run admin -- token revoke <prefix>` (≥8 chars, must be unambiguous).
-4. **Audit room membership.**
+   - `docker exec rdoc-lc-bot npm run admin -- token revoke <prefix>` (≥8 chars, must be unambiguous). Works for both join and kick tokens.
+4. **Kick a server out of a room.**
+   - `docker exec rdoc-lc-bot npm run admin -- token create-kick <room> <target-guild-id>` — issues a kick token. Operator can either run the slash command themselves in any guild they have Manage Channels in, or delegate the action by sending the token to a trusted admin.
+   - The recipient runs `/bridge kick <token>`. All of the target guild's channels in that room are unlinked and their webhooks deleted.
+5. **Audit room membership.**
    - `docker exec rdoc-lc-bot npm run admin -- room list`
    - `docker exec rdoc-lc-bot npm run admin -- room members <room>`

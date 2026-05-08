@@ -86,4 +86,23 @@ async function webhookError({ sourceGuildId, room, targetChannelId, errorMessage
   });
 }
 
-module.exports = { init, tokenConsumed, channelLeft, webhookError, COLORS };
+async function serverKicked({ room, targetGuildId, executedByGuildId, executedByUserId }) {
+  const allMembers = rooms.getRoomMembers(room);
+  const recipients = allMembers.map(m => m.guildId);
+  if (!recipients.includes(targetGuildId)) recipients.push(targetGuildId);
+  await dispatch({
+    recipients,
+    title: 'Bridge: server kicked from room',
+    color: COLORS.error,
+    fields: [
+      { name: 'Room',          value: `\`${room}\``,           inline: true },
+      { name: 'Removed guild', value: `\`${targetGuildId}\``,  inline: true },
+      { name: 'Executed by',   value: executedByUserId
+        ? `<@${executedByUserId}> (guild \`${executedByGuildId}\`)`
+        : `guild \`${executedByGuildId}\``,
+        inline: false },
+    ],
+  });
+}
+
+module.exports = { init, tokenConsumed, channelLeft, webhookError, serverKicked, COLORS };

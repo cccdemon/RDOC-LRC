@@ -43,6 +43,7 @@ function usage() {
   process.stdout.write([
     'Usage:',
     '  admin.js token create <room> [--guild=<id>] [--expires-h=<hours>]',
+    '  admin.js token create-kick <room> <target-guild-id> [--expires-h=<hours>]',
     '  admin.js token list [--room=<name>]',
     '  admin.js token revoke <prefix>           (prefix: at least 8 chars)',
     '  admin.js room list',
@@ -50,7 +51,8 @@ function usage() {
     '',
     'Notes:',
     '  Default token expiry is 168h (7 days).',
-    '  --guild binds a token to a specific Discord guild ID; without it, any guild can use the token (once).',
+    '  Join token: --guild binds it to a specific Discord guild ID; without it, any guild can use the token (once).',
+    '  Kick token: removes <target-guild-id> from <room>. Whoever runs /bridge kick <token> in any guild executes it.',
     '',
   ].join('\n'));
 }
@@ -86,6 +88,37 @@ async function cmdTokenCreate(args, flags, redis) {
   ].join('\n'));
 }
 
+async function cmdTokenCreateKick(args, flags, redis) {
+  const room = (args[0] || '').toLowerCase();
+  const targetGuildId = args[1];
+  if (!room || !targetGuildId) fail('usage: token create-kick <room> <target-guild-id> [--expires-h=<hours>]');
+  if (!ROOM_NAME_RE.test(room)) fail('invalid room name');
+  if (!GUILD_ID_RE.test(targetGuildId)) fail('invalid target guild ID (expected 17-20 digits)');
+
+  const hours = flags['expires-h'] !== undefined ? parseInt(flags['expires-h']) : 168;
+  if (!Number.isFinite(hours) || hours <= 0) fail('--expires-h must be a positive integer');
+
+  const members = await redis.smembers(`rdoc:room:${room}:members`);
+  const targetIsMember = members.some(m => m.startsWith(`${targetGuildId}:`));
+
+  const result = await tokens.createKick({
+    room,
+    targetGuildId,
+    expiresInMs: hours * 3600 * 1000,
+  });
+
+  process.stdout.write([
+    `Kick token:    ${result.token}`,
+    `Room:          ${result.room}`,
+    `Target guild:  ${result.targetGuildId}${targetIsMember ? '' : '   (WARNING: not currently a member of this room)'}`,
+    `Expires:       ${fmtDate(result.expiresAt)}  (${hours}h)`,
+    '',
+    'Send the token to whoever should execute the kick. They run, in any guild they have Manage Channels:',
+    `  /bridge kick ${result.token}`,
+    '',
+  ].join('\n'));
+}
+
 async function cmdTokenList(args, flags) {
   const room = flags.room ? String(flags.room).toLowerCase() : undefined;
   const list = await tokens.list({ room });
@@ -95,8 +128,11 @@ async function cmdTokenList(args, flags) {
     return;
   }
   for (const t of list) {
+    const tail = t.kind === 'kick'
+      ? `target=${t.targetGuildId}`
+      : `guild=${t.guildId || '(any)'}`;
     process.stdout.write(
-      `${t.token}  room="${t.room}"  expires=${fmtDate(t.expiresAt)}  guild=${t.guildId || '(any)'}\n`
+      `${t.token}  kind=${t.kind}  room="${t.room}"  expires=${fmtDate(t.expiresAt)}  ${tail}\n`
     );
   }
 }
@@ -131,11 +167,12 @@ async function cmdRoomMembers(args) {
 }
 
 const ROUTES = {
-  'token create': cmdTokenCreate,
-  'token list':   cmdTokenList,
-  'token revoke': cmdTokenRevoke,
-  'room list':    cmdRoomList,
-  'room members': cmdRoomMembers,
+  'token create':      cmdTokenCreate,
+  'token create-kick': cmdTokenCreateKick,
+  'token list':        cmdTokenList,
+  'token revoke':      cmdTokenRevoke,
+  'room list':         cmdRoomList,
+  'room members':      cmdRoomMembers,
 };
 
 async function main() {

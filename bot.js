@@ -62,7 +62,7 @@ async function onMessage(message) {
     : undefined;
 
   const payload = {
-    username: `${displayName} · ${message.guild.name}`.slice(0, 80),
+    username: `From ${message.guild.name} / ${displayName}`.slice(0, 80),
     avatarURL,
     content: message.content || undefined,
     files,
