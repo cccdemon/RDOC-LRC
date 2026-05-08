@@ -11,6 +11,7 @@ const webhookClients = new Map();
 const K_ROOMS = 'rdoc:rooms';
 const kRoomMembers = (room) => `rdoc:room:${room}:members`;
 const kChannel = (channelId) => `rdoc:channel:${channelId}`;
+const kGuildAuditChannel = (guildId) => `rdoc:guild:${guildId}:audit_channel`;
 
 async function initRooms(redisClient) {
   redis = redisClient;
@@ -96,8 +97,18 @@ function summary() {
   return out;
 }
 
+async function setGuildAuditChannel(guildId, channelId) {
+  if (channelId) await redis.set(kGuildAuditChannel(guildId), String(channelId));
+  else           await redis.del(kGuildAuditChannel(guildId));
+}
+
+async function getGuildAuditChannel(guildId) {
+  return await redis.get(kGuildAuditChannel(guildId));
+}
+
 module.exports = {
   initRooms, join, leave,
   getChannel, getRoomMembers, getGuildChannels, getWebhookClient,
   summary,
+  setGuildAuditChannel, getGuildAuditChannel,
 };

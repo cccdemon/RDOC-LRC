@@ -1,11 +1,12 @@
 {
   "name": "rdoc-lc",
-  "version": "0.1.0",
-  "description": "Raumdock-Longrange-Communicator (RDOC-LC) — multi-server, multi-room Discord bridge",
+  "version": "0.2.0",
+  "description": "Raumdock-Longrange-Communicator (RDOC-LC) — multi-server, multi-room Discord bridge with operator-issued one-time join tokens",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev":   "node --watch server.js",
+    "admin": "node bin/admin.js"
   },
   "engines": {
     "node": ">=20"

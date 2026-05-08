@@ -2,6 +2,8 @@
 
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const rooms = require('./rooms');
+const tokens = require('./tokens');
+const audit = require('./audit');
 const { log, logErr } = require('./log');
 
 const ROOM_NAME_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
@@ -14,9 +16,12 @@ const commands = [
     .setDMPermission(false)
     .addSubcommand(sub => sub
       .setName('join')
-      .setDescription('Link this channel to a bridge room')
+      .setDescription('Link this channel to a bridge room (requires a one-time token)')
       .addStringOption(o => o.setName('room')
-        .setDescription('Room name (a-z, 0-9, dash; 2-31 chars)')
+        .setDescription('Room name')
+        .setRequired(true))
+      .addStringOption(o => o.setName('token')
+        .setDescription('One-time join token (rdoc-XXXX-XXXX-XXXX-XXXX)')
         .setRequired(true)))
     .addSubcommand(sub => sub
       .setName('leave')
@@ -26,7 +31,15 @@ const commands = [
       .setDescription('Channels in this guild that are linked to bridge rooms'))
     .addSubcommand(sub => sub
       .setName('rooms')
-      .setDescription('All known bridge rooms and their member counts')),
+      .setDescription('Bridge rooms this server participates in'))
+    .addSubcommand(sub => sub
+      .setName('audit-channel')
+      .setDescription('Set or clear the audit log channel for this server')
+      .addChannelOption(o => o
+        .setName('channel')
+        .setDescription('Text channel to receive audit events (omit to clear)')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(false))),
 ];
 
 async function handleInteraction(interaction) {
@@ -35,18 +48,24 @@ async function handleInteraction(interaction) {
 
   const sub = interaction.options.getSubcommand();
   switch (sub) {
-    case 'join':  return handleJoin(interaction);
-    case 'leave': return handleLeave(interaction);
-    case 'list':  return handleList(interaction);
-    case 'rooms': return handleRooms(interaction);
-    default:      return reply(interaction, `Unknown subcommand: ${sub}`);
+    case 'join':           return handleJoin(interaction);
+    case 'leave':          return handleLeave(interaction);
+    case 'list':           return handleList(interaction);
+    case 'rooms':          return handleRooms(interaction);
+    case 'audit-channel':  return handleAuditChannel(interaction);
+    default:               return reply(interaction, `Unknown subcommand: ${sub}`);
   }
 }
 
 async function handleJoin(interaction) {
   const room = interaction.options.getString('room', true).toLowerCase();
+  const token = interaction.options.getString('token', true).trim();
+
   if (!ROOM_NAME_RE.test(room)) {
     return reply(interaction, 'Invalid room name. Use a-z, 0-9, dashes; 2-31 chars; must start with a letter or digit.');
+  }
+  if (!tokens.isValidFormat(token)) {
+    return reply(interaction, 'Invalid token format. Expected `rdoc-XXXX-XXXX-XXXX-XXXX`.');
   }
 
   const channel = interaction.channel;
@@ -57,6 +76,19 @@ async function handleJoin(interaction) {
   const existing = rooms.getChannel(channel.id);
   if (existing) {
     return reply(interaction, `This channel is already linked to room "${existing.room}". Run /bridge leave first.`);
+  }
+
+  try {
+    await tokens.consume({ token, room, guildId: channel.guildId });
+  } catch (e) {
+    const msg = ({
+      NOT_FOUND:      'Invalid or already-used token.',
+      EXPIRED:        'This token has expired.',
+      ROOM_MISMATCH:  'This token is not valid for that room name.',
+      GUILD_MISMATCH: 'This token is not valid for this server.',
+    })[e.code] || `Token validation failed: ${e.message}`;
+    logErr('Join', `token rejected (${e.code || 'ERR'}) room=${room} guild=${channel.guildId}`);
+    return reply(interaction, msg);
   }
 
   let webhook;
@@ -73,7 +105,14 @@ async function handleJoin(interaction) {
   await rooms.join(room, channel.guildId, channel.id, webhook.url, webhook.id);
 
   const total = rooms.getRoomMembers(room).length;
-  log('Join', `[${room}] ${interaction.guild.name}#${channel.name} (${channel.id}) — ${total} member(s) total`);
+  log('Join', `[${room}] ${interaction.guild.name}#${channel.name} (${channel.id}) — ${total} member(s) total — token=${token.slice(0, 13)}...`);
+
+  audit.tokenConsumed({
+    room,
+    joiningGuild: interaction.guild,
+    joiningChannel: channel,
+  }).catch(e => logErr('Audit', e.message));
+
   return reply(interaction, `Linked #${channel.name} to room "${room}". This room now has ${total} channel(s) across all servers.`);
 }
 
@@ -91,6 +130,13 @@ async function handleLeave(interaction) {
 
   await rooms.leave(channel.id);
   log('Leave', `[${entry.room}] ${interaction.guild.name}#${channel.name} (${channel.id})`);
+
+  audit.channelLeft({
+    room: entry.room,
+    leavingGuildId: entry.guildId,
+    channelId: channel.id,
+  }).catch(e => logErr('Audit', e.message));
+
   return reply(interaction, `Unlinked #${channel.name} from room "${entry.room}".`);
 }
 
@@ -106,12 +152,33 @@ async function handleList(interaction) {
 }
 
 async function handleRooms(interaction) {
-  const all = rooms.summary();
-  const names = Object.keys(all).sort();
-  if (names.length === 0) return reply(interaction, 'No bridge rooms exist yet. Run `/bridge join <room>` to create one.');
+  const entries = rooms.getGuildChannels(interaction.guildId);
+  if (entries.length === 0) return reply(interaction, 'This server is not part of any bridge room.');
 
-  const lines = names.map(n => `- "${n}" — ${all[n]} channel(s)`);
+  const byRoom = new Map();
+  for (const e of entries) byRoom.set(e.room, (byRoom.get(e.room) || 0) + 1);
+
+  const lines = [...byRoom.keys()].sort().map(room => {
+    const here = byRoom.get(room);
+    const total = rooms.getRoomMembers(room).length;
+    return `- "${room}" — ${here} channel(s) here, ${total} total across all servers`;
+  });
   return reply(interaction, lines.join('\n'));
+}
+
+async function handleAuditChannel(interaction) {
+  const target = interaction.options.getChannel('channel');
+  if (!target) {
+    await rooms.setGuildAuditChannel(interaction.guildId, null);
+    log('Audit', `cleared for guild=${interaction.guildId} (${interaction.guild.name})`);
+    return reply(interaction, 'Audit channel cleared. This server will no longer receive bridge audit events.');
+  }
+  if (target.type !== ChannelType.GuildText) {
+    return reply(interaction, 'Audit channel must be a regular text channel.');
+  }
+  await rooms.setGuildAuditChannel(interaction.guildId, target.id);
+  log('Audit', `set for guild=${interaction.guildId} -> channel=${target.id}`);
+  return reply(interaction, `Audit channel set to <#${target.id}>. Bridge events for rooms this server participates in will be posted there.`);
 }
 
 function reply(interaction, content) {

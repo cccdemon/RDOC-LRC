@@ -3,10 +3,15 @@
 const { Client, GatewayIntentBits, Partials, REST, Routes } = require('discord.js');
 const { commands, handleInteraction } = require('./commands');
 const rooms = require('./rooms');
+const tokens = require('./tokens');
+const audit = require('./audit');
 const { log, logErr } = require('./log');
+
+const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 
 let client = null;
 let ready = false;
+let sweepTimer = null;
 
 async function startBot({ token, appId }) {
   client = new Client({
@@ -19,10 +24,12 @@ async function startBot({ token, appId }) {
     partials: [Partials.Channel, Partials.Message],
   });
 
-  client.once('ready', async (c) => {
+  client.once('clientReady', async (c) => {
     log('Discord', `Logged in as ${c.user.tag} — ${c.guilds.cache.size} guild(s)`);
     ready = true;
+    audit.init(c);
     await registerCommands({ token, appId });
+    scheduleTokenSweep();
   });
 
   client.on('messageCreate', (m) => onMessage(m).catch(e => logErr('Relay', e.message)));
@@ -67,8 +74,21 @@ async function onMessage(message) {
   const t0 = Date.now();
   await Promise.all(targets.map(t => sendToTarget(t, payload).catch(e => {
     logErr('Relay', `-> ${t.guildId}/${t.channelId}: ${e.message}`);
+    audit.webhookError({
+      sourceGuildId: message.guild.id,
+      room: entry.room,
+      targetChannelId: t.channelId,
+      errorMessage: e.message,
+    }).catch(err => logErr('Audit', err.message));
   })));
   log('Relay', `[${entry.room}] ${displayName}@${message.guild.name} -> ${targets.length} target(s) (${Date.now() - t0}ms)`);
+}
+
+function scheduleTokenSweep() {
+  if (sweepTimer) clearInterval(sweepTimer);
+  const run = () => tokens.sweepExpired().catch(e => logErr('Tokens', `sweep failed: ${e.message}`));
+  run();
+  sweepTimer = setInterval(run, SWEEP_INTERVAL_MS);
 }
 
 async function sendToTarget(target, payload) {
