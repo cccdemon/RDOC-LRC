@@ -28,7 +28,15 @@ async function initRooms(redisClient) {
       if (!guildId || !channelId) continue;
       const data = await redis.hgetall(kChannel(channelId));
       if (!data || !data.webhookUrl) continue;
-      addToCache({ room, guildId, channelId, webhookUrl: data.webhookUrl, webhookId: data.webhookId });
+      addToCache({
+        room,
+        guildId,
+        channelId,
+        webhookUrl: data.webhookUrl,
+        webhookId: data.webhookId,
+        guildName: data.guildName || '',
+        channelName: data.channelName || '',
+      });
     }
   }
   log('Rooms', `Loaded: ${roomMembers.size} room(s), ${channelMap.size} channel(s)`);
@@ -55,12 +63,12 @@ function removeFromCache(channelId) {
   return entry;
 }
 
-async function join(room, guildId, channelId, webhookUrl, webhookId) {
-  const entry = { room, guildId, channelId, webhookUrl, webhookId };
+async function join(room, guildId, channelId, webhookUrl, webhookId, guildName = '', channelName = '') {
+  const entry = { room, guildId, channelId, webhookUrl, webhookId, guildName, channelName };
   const tx = redis.multi();
   tx.sadd(K_ROOMS, room);
   tx.sadd(kRoomMembers(room), `${guildId}:${channelId}`);
-  tx.hset(kChannel(channelId), { room, guildId, webhookUrl, webhookId });
+  tx.hset(kChannel(channelId), { room, guildId, webhookUrl, webhookId, guildName, channelName });
   await tx.exec();
   addToCache(entry);
 }

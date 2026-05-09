@@ -178,7 +178,7 @@ langstreckenfunk  2 channel(s)
 
 ## `room members`
 
-Lists every channel binding in a single room. Each line is `<guildId>:<channelId>  webhookId=<id>`.
+Lists every channel binding in a single room. Each line is `<guildId>:<channelId>  webhookId=<id> discord-name=<guildName> channel-name: <channelName>`.
 
 ```
 admin.js room members <room>
@@ -190,10 +190,14 @@ admin.js room members <room>
 
 ```
 $ docker exec rdoc-lc-bot npm run admin -- room members alliance-chat
-1234567890123456789:1502194151712886965  webhookId=1502214942315774045
-1234567890123456789:1502597899832393880  webhookId=1502598370173255761
-9876543210987654321:1503001112223334445  webhookId=1503010001112223334
+1234567890123456789:1502194151712886965  webhookId=1502214942315774045 discord-name=raumdock channel-name: bla
+1234567890123456789:1502597899832393880  webhookId=1502598370173255761 discord-name=foobar channel-name: blub
+9876543210987654321:1503001112223334445  webhookId=1503010001112223334 discord-name=starcom channel-name: bla
 ```
+
+`discord-name` is the Discord guild name, `channel-name` is the channel name — both as captured at `/bridge join` time. They are stored in the `rdoc:channel:<channelId>` HASH and are **not auto-refreshed** when the guild or channel is renamed in Discord.
+
+Bindings created **before** the names-storage feature shipped will display `discord-name=(unknown) channel-name: (unknown)`. To refresh, run `/bridge leave` in the affected channel and `/bridge join` again with a fresh token.
 
 ---
 

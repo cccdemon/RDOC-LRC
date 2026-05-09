@@ -165,7 +165,11 @@ async function cmdRoomMembers(args) {
   const members = rooms.getRoomMembers(room);
   if (members.length === 0) { process.stdout.write(`No members in room "${room}".\n`); return; }
   for (const m of members) {
-    process.stdout.write(`${m.guildId}:${m.channelId}  webhookId=${m.webhookId}\n`);
+    const gn = m.guildName || '(unknown)';
+    const cn = m.channelName || '(unknown)';
+    process.stdout.write(
+      `${m.guildId}:${m.channelId}  webhookId=${m.webhookId} discord-name=${gn} channel-name: ${cn}\n`
+    );
   }
 }
 

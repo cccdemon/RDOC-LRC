@@ -112,7 +112,7 @@ async function handleJoin(interaction) {
     return reply(interaction, `Could not create webhook: ${e.message}. The bot needs the "Manage Webhooks" permission in this channel.`);
   }
 
-  await rooms.join(room, channel.guildId, channel.id, webhook.url, webhook.id);
+  await rooms.join(room, channel.guildId, channel.id, webhook.url, webhook.id, interaction.guild.name, channel.name);
 
   const total = rooms.getRoomMembers(room).length;
   log('Join', `[${room}] ${interaction.guild.name}#${channel.name} (${channel.id}) — ${total} member(s) total — token=${token.slice(0, 13)}...`);
