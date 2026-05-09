@@ -48,11 +48,14 @@ function usage() {
     '  admin.js token revoke <prefix>           (prefix: at least 8 chars)',
     '  admin.js room list',
     '  admin.js room members <room>',
+    '  admin.js state cleanup [--room=<name>]',
     '',
     'Notes:',
     '  Default token expiry is 168h (7 days).',
     '  Join token: --guild binds it to a specific Discord guild ID; without it, any guild can use the token (once).',
     '  Kick token: removes <target-guild-id> from <room>. Whoever runs /bridge kick <token> in any guild executes it.',
+    '  state cleanup: logs into Discord, verifies every bridged channel exists, and removes bindings to deleted',
+    '                 channels/guilds. Requires DISCORD_TOKEN. Restart the bot afterwards so its in-memory cache reloads.',
     '',
   ].join('\n'));
 }
@@ -166,6 +169,39 @@ async function cmdRoomMembers(args) {
   }
 }
 
+async function cmdStateCleanup(args, flags) {
+  const roomFilter = flags.room ? String(flags.room).toLowerCase() : null;
+  if (roomFilter && !ROOM_NAME_RE.test(roomFilter)) fail('invalid --room value');
+
+  const token = process.env.DISCORD_TOKEN;
+  if (!token) fail('DISCORD_TOKEN env var required (cleanup verifies channels via the Discord API)');
+
+  const { Client, GatewayIntentBits } = require('discord.js');
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+  await new Promise((resolve, reject) => {
+    client.once('clientReady', () => resolve());
+    client.once('error', reject);
+    client.login(token).catch(reject);
+  });
+
+  try {
+    process.stdout.write(`Logged in as ${client.user.tag} — ${client.guilds.cache.size} guild(s) visible\n`);
+    if (roomFilter) process.stdout.write(`Scope: room="${roomFilter}"\n`);
+
+    const result = await rooms.pruneStale(client, { roomFilter });
+    for (const d of result.details) {
+      process.stdout.write(`- pruned room="${d.room}" guild=${d.guildId} channel=${d.channelId}  (${d.reason})\n`);
+    }
+    process.stdout.write(`Done: ${result.checked} verified, ${result.evicted} pruned, ${result.skipped} skipped (transient errors).\n`);
+    if (result.evicted > 0) {
+      process.stdout.write('Restart the bot so its in-memory cache reloads:  docker restart rdoc-lc-bot\n');
+    }
+  } finally {
+    await client.destroy().catch(() => {});
+  }
+}
+
 const ROUTES = {
   'token create':      cmdTokenCreate,
   'token create-kick': cmdTokenCreateKick,
@@ -173,6 +209,7 @@ const ROUTES = {
   'token revoke':      cmdTokenRevoke,
   'room list':         cmdRoomList,
   'room members':      cmdRoomMembers,
+  'state cleanup':     cmdStateCleanup,
 };
 
 async function main() {
@@ -198,7 +235,7 @@ async function main() {
   try {
     await redis.connect();
     tokens.init(redis);
-    if (domain === 'room') await rooms.initRooms(redis);
+    if (domain === 'room' || domain === 'state') await rooms.initRooms(redis);
     await handler(rest, flags, redis);
   } catch (e) {
     fail(e?.code ? `${e.code}: ${e.message || ''}` : (e.message || String(e)));

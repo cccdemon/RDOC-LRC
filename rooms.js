@@ -1,7 +1,7 @@
 'use strict';
 
 const { WebhookClient } = require('discord.js');
-const { log } = require('./log');
+const { log, logErr } = require('./log');
 
 let redis = null;
 const channelMap = new Map();
@@ -97,6 +97,40 @@ function summary() {
   return out;
 }
 
+async function pruneStale(client, { roomFilter } = {}) {
+  if (!client) throw new Error('pruneStale requires a logged-in Discord client');
+  const all = [...channelMap.values()];
+  const entries = roomFilter ? all.filter(e => e.room === roomFilter) : all;
+  const details = [];
+  let skipped = 0;
+
+  for (const e of entries) {
+    let deadReason = null;
+    try {
+      const ch = await client.channels.fetch(e.channelId);
+      if (!ch) deadReason = 'fetch returned null';
+    } catch (err) {
+      const code = err?.code;
+      if (code === 10003)      deadReason = 'Unknown Channel (10003)';
+      else if (code === 10004) deadReason = 'Unknown Guild (10004)';
+      else {
+        skipped++;
+        logErr('Rooms', `prune skipped channel=${e.channelId}: ${err?.message || err}`);
+      }
+    }
+    if (deadReason) {
+      try {
+        await leave(e.channelId);
+        details.push({ room: e.room, guildId: e.guildId, channelId: e.channelId, reason: deadReason });
+      } catch (err) {
+        logErr('Rooms', `prune leave failed channel=${e.channelId}: ${err?.message || err}`);
+      }
+    }
+  }
+
+  return { checked: entries.length, evicted: details.length, skipped, details };
+}
+
 async function setGuildAuditChannel(guildId, channelId) {
   if (channelId) await redis.set(kGuildAuditChannel(guildId), String(channelId));
   else           await redis.del(kGuildAuditChannel(guildId));
@@ -110,5 +144,6 @@ module.exports = {
   initRooms, join, leave,
   getChannel, getRoomMembers, getGuildChannels, getWebhookClient,
   summary,
+  pruneStale,
   setGuildAuditChannel, getGuildAuditChannel,
 };
