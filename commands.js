@@ -148,8 +148,8 @@ async function handleJoin(interaction) {
   }
 
   const channel = interaction.channel;
-  if (!channel || channel.type !== ChannelType.GuildText) {
-    return reply(interaction, 'This command only works in regular text channels.');
+  if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+    return reply(interaction, 'This command only works in regular text channels and announcement channels.');
   }
 
   const existing = rooms.getChannel(channel.id);
@@ -329,6 +329,9 @@ async function handleWeblinkMode(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    }
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -357,6 +360,9 @@ async function handleWeblinkAdd(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    }
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -380,6 +386,9 @@ async function handleWeblinkRemove(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    }
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -402,6 +411,9 @@ async function handleWeblinkList(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    }
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -438,6 +450,9 @@ async function handleWeblinkClear(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    }
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
