@@ -188,3 +188,5 @@ The Affero clause matters here: if you run a modified version of RDOC-LC as a ne
 - Add Havensupport (https://ancsemi.github.io/Haven/) 
 - better interface (a WebGUI)
 - Linkfilter to prevent Spam/Advertisment (Allowlist)
+- Tenant/Multitenant support
+- MultiAdmin Support for gen-token via webadmin
