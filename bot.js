@@ -55,22 +55,29 @@ async function onMessage(message) {
 
   // Check weblink filtering for the room federation
   const weblinkConfig = await rooms.getWeblinkConfig('room', entry.room);
+  console.log(`[WEBLINK DEBUG] Room: ${entry.room}, Mode: ${weblinkConfig.mode}, List: ${JSON.stringify(weblinkConfig.list)}`);
 
   if (weblinkConfig.mode !== 'none') {
     const urls = weblink.extractUrls(message.content);
+    console.log(`[WEBLINK DEBUG] Message content: "${message.content}", URLs: ${JSON.stringify(urls)}`);
     const check = weblink.checkWeblinkPolicy(urls, weblinkConfig.mode, weblinkConfig.list);
+    console.log(`[WEBLINK DEBUG] Check result: ${JSON.stringify(check)}`);
 
     if (!check.allowed) {
+      console.log(`[WEBLINK DEBUG] Blocking message - attempting to delete`);
       // Delete the message and send warning
       try {
         await message.delete();
+        console.log(`[WEBLINK DEBUG] Message deleted successfully`);
         await message.channel.send({
           content: `<@${message.author.id}> Your message was deleted because it contained a link violation: ${check.reason}`,
           allowedMentions: { users: [message.author.id] }
         }).then(reply => {
           setTimeout(() => reply.delete().catch(() => {}), 10000); // Auto-delete warning after 10s
         });
+        console.log(`[WEBLINK DEBUG] Warning sent`);
       } catch (e) {
+        console.log(`[WEBLINK DEBUG] Failed to delete/block message: ${e.message}`);
         logErr('Weblink', `Failed to delete/block message: ${e.message}`);
       }
 
