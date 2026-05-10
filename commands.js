@@ -148,8 +148,14 @@ async function handleJoin(interaction) {
   }
 
   const channel = interaction.channel;
-  if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-    return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
+  }
+
+  // For now, allow any text-based channel that is not a thread
+  // This should work for text channels, announcement channels, etc.
+  if (!channel.isTextBased() || channel.isThread()) {
+    return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
   }
 
   const existing = rooms.getChannel(channel.id);
@@ -329,9 +335,15 @@ async function handleWeblinkMode(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    if (!channel) {
+      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
     }
+
+    // For now, allow any text-based channel that is not a thread
+    if (!channel.isTextBased() || channel.isThread()) {
+      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+    }
+
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -360,9 +372,15 @@ async function handleWeblinkAdd(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    if (!channel) {
+      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
     }
+
+    // For now, allow any text-based channel that is not a thread
+    if (!channel.isTextBased() || channel.isThread()) {
+      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+    }
+
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -386,9 +404,15 @@ async function handleWeblinkRemove(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    if (!channel) {
+      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
     }
+
+    // For now, allow any text-based channel that is not a thread
+    if (!channel.isTextBased() || channel.isThread()) {
+      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+    }
+
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -411,9 +435,15 @@ async function handleWeblinkList(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    if (!channel) {
+      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
     }
+
+    // For now, allow any text-based channel that is not a thread
+    if (!channel.isTextBased() || channel.isThread()) {
+      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+    }
+
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
@@ -450,9 +480,15 @@ async function handleWeblinkClear(interaction) {
   let id;
   if (scope === 'room') {
     const channel = interaction.channel;
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return reply(interaction, 'This command only works in regular text channels and announcement channels.');
+    if (!channel) {
+      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
     }
+
+    // For now, allow any text-based channel that is not a thread
+    if (!channel.isTextBased() || channel.isThread()) {
+      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+    }
+
     const entry = rooms.getChannel(channel.id);
     if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
     id = entry.room;
