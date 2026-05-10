@@ -1,0 +1,152 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 2569 >>
+stream
+BT
+/F1 18 Tf
+72 770 Td
+/F1 18 Tf
+(Raumdock Longrange Communicator) Tj
+0 -28 Td
+/F1 14 Tf
+(Einfaches Konzept) Tj
+0 -16 Td
+/F1 11 Tf
+0 -20 Td
+/F1 13 Tf
+(Was ist das?) Tj
+0 -16 Td
+/F1 11 Tf
+(Der Raumdock Longrange Communicator ist ein Discord-Bot.) Tj
+0 -16 Td
+/F1 11 Tf
+(Er verbindet Textkanaele von mehreren Discord-Servern miteinander.) Tj
+0 -16 Td
+/F1 11 Tf
+(Jede Orga bleibt auf ihrem eigenen Discord, kann aber trotzdem mit) Tj
+0 -18 Td
+/F1 11 Tf
+(anderen Orgas in gemeinsamen Kanaelen schreiben.) Tj
+0 -16 Td
+/F1 11 Tf
+0 -20 Td
+/F1 13 Tf
+(1 - InterOrga-Kommunikation ohne Discord-Wechsel) Tj
+0 -16 Td
+/F1 11 Tf
+(Niemand muss den eigenen Discord verlassen.) Tj
+0 -16 Td
+/F1 11 Tf
+(Eine Orga schreibt in ihrem Kanal, die Nachricht erscheint automatisch) Tj
+0 -16 Td
+/F1 11 Tf
+(bei den anderen verbundenen Orgas.) Tj
+0 -16 Td
+/F1 11 Tf
+(So bleibt jede Gruppe in ihrer eigenen Struktur, aber alle koennen) Tj
+0 -18 Td
+/F1 11 Tf
+(trotzdem miteinander reden.) Tj
+0 -16 Td
+/F1 11 Tf
+0 -20 Td
+/F1 13 Tf
+(2 - Diplomatie und Planungskanaele im Rollenspiel) Tj
+0 -16 Td
+/F1 11 Tf
+(Es koennen verschiedene Kanaele fuer verschiedene Zwecke genutzt werden.) Tj
+0 -16 Td
+/F1 11 Tf
+(Beispiele:) Tj
+0 -16 Td
+/F1 11 Tf
+(- Funk-chat: schneller gemeinsamer Funk zwischen Orgas.) Tj
+0 -16 Td
+/F1 11 Tf
+(- Roleplay: IC-Absprachen, Funksprueche, Meldungen und Lageberichte.) Tj
+0 -16 Td
+/F1 11 Tf
+(- Diplomatiekanal A: Verhandlungen, Buendnisse, Konflikte und Absprachen.) Tj
+0 -16 Td
+/F1 11 Tf
+(Weitere Raeume koennen fuer Einsaetze, Handel, Events oder Krisen) Tj
+0 -18 Td
+/F1 11 Tf
+(angelegt werden.) Tj
+0 -16 Td
+/F1 11 Tf
+0 -20 Td
+/F1 13 Tf
+(3 - Einfache Abstimmung) Tj
+0 -16 Td
+/F1 11 Tf
+(Der Bot hilft bei schnellen Fragen:) Tj
+0 -16 Td
+/F1 11 Tf
+(- Wer ist dabei?) Tj
+0 -16 Td
+/F1 11 Tf
+(- Wann treffen wir uns?) Tj
+0 -16 Td
+/F1 11 Tf
+(- Wer uebernimmt welche Aufgabe?) Tj
+0 -16 Td
+/F1 11 Tf
+(- Gibt es Probleme oder neue Informationen?) Tj
+0 -18 Td
+/F1 11 Tf
+(- Muss eine andere Orga informiert werden?) Tj
+0 -16 Td
+/F1 11 Tf
+0 -20 Td
+/F1 13 Tf
+(Wie laeuft das ab?) Tj
+0 -16 Td
+/F1 11 Tf
+(Der Betreiber erstellt einen Raum und gibt einer Orga einen einmaligen) Tj
+0 -16 Td
+/F1 11 Tf
+(Zugangscode. Der Admin der anderen Orga nutzt diesen Code in seinem) Tj
+0 -18 Td
+/F1 11 Tf
+(Discord-Kanal. Danach sind die Kanaele verbunden.) Tj
+0 -16 Td
+/F1 11 Tf
+0 -20 Td
+/F1 13 Tf
+(Kurz gesagt) Tj
+0 -16 Td
+/F1 11 Tf
+(Der Bot ist wie ein Langstrecken-Funkgeraet zwischen Discord-Servern.) Tj
+0 -16 Td
+/F1 11 Tf
+(Jede Orga bleibt zuhause, aber ausgewaehlte Kanaele sprechen miteinander.) Tj
+ET
+
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2932
+%%EOF
