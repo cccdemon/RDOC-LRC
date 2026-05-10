@@ -73,25 +73,35 @@ async function onMessage(message) {
       
       if (!canDelete) {
         console.log(`[WEBLINK DEBUG] Bot lacks ManageMessages permission, cannot delete message`);
-        // Still don't relay the message, but log the issue
         logErr('Weblink', 'Bot lacks ManageMessages permission to delete blocked messages');
-        return;
-      }
-      
-      // Delete the message and send warning
-      try {
-        await message.delete();
-        console.log(`[WEBLINK DEBUG] Message deleted successfully`);
-        await message.channel.send({
-          content: `<@${message.author.id}> Your message was deleted because it contained a link violation: ${check.reason}`,
-          allowedMentions: { users: [message.author.id] }
-        }).then(reply => {
-          setTimeout(() => reply.delete().catch(() => {}), 10000); // Auto-delete warning after 10s
-        });
-        console.log(`[WEBLINK DEBUG] Warning sent`);
-      } catch (e) {
-        console.log(`[WEBLINK DEBUG] Failed to delete/block message: ${e.message}`);
-        logErr('Weblink', `Failed to delete/block message: ${e.message}`);
+        try {
+          await message.channel.send({
+            content: `<@${message.author.id}> Your message contains a blocked link and could not be deleted because I do not have Manage Messages permission. The message will not be relayed.`,
+            allowedMentions: { users: [message.author.id] }
+          }).then(reply => {
+            setTimeout(() => reply.delete().catch(() => {}), 10000);
+          });
+          console.log(`[WEBLINK DEBUG] Warning sent without deleting original message`);
+        } catch (e) {
+          console.log(`[WEBLINK DEBUG] Failed to send warning when delete permission missing: ${e.message}`);
+          logErr('Weblink', `Failed to send warning for blocked message: ${e.message}`);
+        }
+      } else {
+        // Delete the message and send warning
+        try {
+          await message.delete();
+          console.log(`[WEBLINK DEBUG] Message deleted successfully`);
+          await message.channel.send({
+            content: `<@${message.author.id}> Your message was deleted because it contained a link violation: ${check.reason}`,
+            allowedMentions: { users: [message.author.id] }
+          }).then(reply => {
+            setTimeout(() => reply.delete().catch(() => {}), 10000); // Auto-delete warning after 10s
+          });
+          console.log(`[WEBLINK DEBUG] Warning sent`);
+        } catch (e) {
+          console.log(`[WEBLINK DEBUG] Failed to delete/block message: ${e.message}`);
+          logErr('Weblink', `Failed to delete/block message: ${e.message}`);
+        }
       }
 
       // Audit the blocked message
