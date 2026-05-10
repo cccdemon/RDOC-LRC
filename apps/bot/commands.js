@@ -2,10 +2,10 @@
 
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const rooms = require('./rooms');
-const tokens = require('./tokens');
+const tokens = require('@rdoc-lc/core/tokens');
 const audit = require('./audit');
 const announcer = require('./announcer');
-const { log, logErr } = require('./log');
+const { log, logErr } = require('@rdoc-lc/core/log');
 
 function shortName(s) { return String(s || '').slice(0, 80); }
 

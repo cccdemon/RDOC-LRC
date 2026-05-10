@@ -3,9 +3,9 @@
 const { Client, GatewayIntentBits, Partials, REST, Routes } = require('discord.js');
 const { commands, handleInteraction } = require('./commands');
 const rooms = require('./rooms');
-const tokens = require('./tokens');
+const tokens = require('@rdoc-lc/core/tokens');
 const audit = require('./audit');
-const { log, logErr } = require('./log');
+const { log, logErr } = require('@rdoc-lc/core/log');
 
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 

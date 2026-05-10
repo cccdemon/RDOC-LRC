@@ -1,0 +1,16 @@
+{
+  "name": "@rdoc-lc/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared Redis-CRUD, token, and logging primitives for RDOC-LC bot and admin",
+  "license": "AGPL-3.0-or-later",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./log": "./log.js",
+    "./tokens": "./tokens.js"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2"
+  }
+}

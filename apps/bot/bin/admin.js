@@ -2,7 +2,7 @@
 'use strict';
 
 const Redis = require('ioredis');
-const tokens = require('../tokens');
+const tokens = require('@rdoc-lc/core/tokens');
 const rooms = require('../rooms');
 
 const ROOM_NAME_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;

@@ -23,7 +23,9 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   bot:
-    build: .
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
     container_name: rdoc-lc-bot
     restart: unless-stopped
     environment:

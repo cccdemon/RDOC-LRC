@@ -4,8 +4,8 @@ const express = require('express');
 const Redis = require('ioredis');
 const { startBot, getBotStatus } = require('./bot');
 const { initRooms, summary } = require('./rooms');
-const tokens = require('./tokens');
-const { log, logErr } = require('./log');
+const tokens = require('@rdoc-lc/core/tokens');
+const { log, logErr } = require('@rdoc-lc/core/log');
 
 const CFG = {
   port: parseInt(process.env.PORT || '3007'),

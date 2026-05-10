@@ -1,7 +1,7 @@
 'use strict';
 
 const rooms = require('./rooms');
-const { logErr } = require('./log');
+const { logErr } = require('@rdoc-lc/core/log');
 
 async function broadcastSystem(room, content) {
   const targets = rooms.getRoomMembers(room);

@@ -1,20 +1,19 @@
 {
-  "name": "rdoc-lc",
-  "version": "0.2.0",
-  "description": "Raumdock-Longrange-Communicator (RDOC-LC) — multi-server, multi-room Discord bridge with operator-issued one-time join tokens",
+  "name": "rdoc-lc-monorepo",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Raumdock-Longrange-Communicator — multi-tenant Discord bridge with web admin GUI",
   "license": "AGPL-3.0-or-later",
-  "main": "server.js",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "start": "node server.js",
-    "dev":   "node --watch server.js",
-    "admin": "node bin/admin.js"
+    "start": "npm --workspace @rdoc-lc/bot run start",
+    "dev": "npm --workspace @rdoc-lc/bot run dev",
+    "admin": "npm --workspace @rdoc-lc/bot run admin --"
   },
   "engines": {
     "node": ">=20"
-  },
-  "dependencies": {
-    "discord.js": "^14.14.1",
-    "ioredis": "^5.3.2",
-    "express": "^4.18.2"
   }
 }

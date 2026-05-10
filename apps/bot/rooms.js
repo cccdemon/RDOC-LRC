@@ -1,7 +1,7 @@
 'use strict';
 
 const { WebhookClient } = require('discord.js');
-const { log, logErr } = require('./log');
+const { log, logErr } = require('@rdoc-lc/core/log');
 
 let redis = null;
 const channelMap = new Map();

@@ -2,7 +2,7 @@
 
 const { EmbedBuilder } = require('discord.js');
 const rooms = require('./rooms');
-const { logErr } = require('./log');
+const { logErr } = require('@rdoc-lc/core/log');
 
 const COLORS = {
   info: 0x5865F2,
