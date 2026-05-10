@@ -148,10 +148,67 @@ async function getGuildAuditChannel(guildId) {
   return await redis.get(kGuildAuditChannel(guildId));
 }
 
+// Weblink filtering functions
+const kWeblinkMode = (scope, id) => `rdoc:weblink:mode:${scope}:${id}`;
+const kWeblinkList = (scope, id) => `rdoc:weblink:list:${scope}:${id}`;
+
+async function setWeblinkMode(scope, id, mode) {
+  if (!['none', 'allowlist', 'denylist'].includes(mode)) {
+    throw new Error('Invalid mode. Must be "none", "allowlist", or "denylist"');
+  }
+  if (!['room', 'guild'].includes(scope)) {
+    throw new Error('Invalid scope. Must be "room" or "guild"');
+  }
+  await redis.set(kWeblinkMode(scope, id), mode);
+}
+
+async function getWeblinkMode(scope, id) {
+  const mode = await redis.get(kWeblinkMode(scope, id));
+  return mode || 'none'; // Default to no filtering
+}
+
+async function addToWeblinkList(scope, id, domain) {
+  if (!domain || typeof domain !== 'string') {
+    throw new Error('Domain must be a non-empty string');
+  }
+  const normalized = domain.toLowerCase().trim();
+  if (!normalized) {
+    throw new Error('Domain cannot be empty after trimming');
+  }
+  await redis.sadd(kWeblinkList(scope, id), normalized);
+}
+
+async function removeFromWeblinkList(scope, id, domain) {
+  if (!domain || typeof domain !== 'string') {
+    throw new Error('Domain must be a non-empty string');
+  }
+  const normalized = domain.toLowerCase().trim();
+  await redis.srem(kWeblinkList(scope, id), normalized);
+}
+
+async function getWeblinkList(scope, id) {
+  return await redis.smembers(kWeblinkList(scope, id));
+}
+
+async function clearWeblinkList(scope, id) {
+  await redis.del(kWeblinkList(scope, id));
+}
+
+async function getWeblinkConfig(scope, id) {
+  const [mode, list] = await Promise.all([
+    getWeblinkMode(scope, id),
+    getWeblinkList(scope, id)
+  ]);
+  return { mode, list };
+}
+
 module.exports = {
   initRooms, join, leave,
   getChannel, getRoomMembers, getGuildChannels, getWebhookClient,
   summary,
   pruneStale,
   setGuildAuditChannel, getGuildAuditChannel,
+  setWeblinkMode, getWeblinkMode,
+  addToWeblinkList, removeFromWeblinkList, getWeblinkList, clearWeblinkList,
+  getWeblinkConfig,
 };

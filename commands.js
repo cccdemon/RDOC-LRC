@@ -48,7 +48,71 @@ const commands = [
       .setDescription('Remove a server from a bridge room (requires a kick token from the operator)')
       .addStringOption(o => o.setName('token')
         .setDescription('Kick token (rdoc-XXXX-XXXX-XXXX-XXXX) issued via the operator CLI')
-        .setRequired(true))),
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('weblink-mode')
+      .setDescription('Set weblink filtering mode for this room or server')
+      .addStringOption(o => o.setName('scope')
+        .setDescription('Scope of the filtering (room or guild)')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Room (affects all channels in this room)', value: 'room' },
+          { name: 'Guild (affects all rooms in this server)', value: 'guild' }
+        ))
+      .addStringOption(o => o.setName('mode')
+        .setDescription('Filtering mode')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Disabled (no filtering)', value: 'none' },
+          { name: 'Allowlist (only listed domains allowed)', value: 'allowlist' },
+          { name: 'Denylist (listed domains blocked)', value: 'denylist' }
+        )))
+    .addSubcommand(sub => sub
+      .setName('weblink-add')
+      .setDescription('Add a domain to the weblink filter list')
+      .addStringOption(o => o.setName('scope')
+        .setDescription('Scope of the filtering (room or guild)')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Room (affects all channels in this room)', value: 'room' },
+          { name: 'Guild (affects all rooms in this server)', value: 'guild' }
+        ))
+      .addStringOption(o => o.setName('domain')
+        .setDescription('Domain to add (e.g., example.com or *.example.com for wildcards)')
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('weblink-remove')
+      .setDescription('Remove a domain from the weblink filter list')
+      .addStringOption(o => o.setName('scope')
+        .setDescription('Scope of the filtering (room or guild)')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Room (affects all channels in this room)', value: 'room' },
+          { name: 'Guild (affects all rooms in this server)', value: 'guild' }
+        ))
+      .addStringOption(o => o.setName('domain')
+        .setDescription('Domain to remove')
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('weblink-list')
+      .setDescription('Show current weblink filtering configuration')
+      .addStringOption(o => o.setName('scope')
+        .setDescription('Scope to check (room or guild)')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Room (current room configuration)', value: 'room' },
+          { name: 'Guild (server-wide configuration)', value: 'guild' }
+        )))
+    .addSubcommand(sub => sub
+      .setName('weblink-clear')
+      .setDescription('Clear all domains from the weblink filter list')
+      .addStringOption(o => o.setName('scope')
+        .setDescription('Scope to clear (room or guild)')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Room (clear room list)', value: 'room' },
+          { name: 'Guild (clear server list)', value: 'guild' }
+        ))),
 ];
 
 async function handleInteraction(interaction) {
@@ -63,6 +127,11 @@ async function handleInteraction(interaction) {
     case 'rooms':          return handleRooms(interaction);
     case 'audit-channel':  return handleAuditChannel(interaction);
     case 'kick':           return handleKick(interaction);
+    case 'weblink-mode':   return handleWeblinkMode(interaction);
+    case 'weblink-add':    return handleWeblinkAdd(interaction);
+    case 'weblink-remove': return handleWeblinkRemove(interaction);
+    case 'weblink-list':   return handleWeblinkList(interaction);
+    case 'weblink-clear':  return handleWeblinkClear(interaction);
     default:               return reply(interaction, `Unknown subcommand: ${sub}`);
   }
 }
@@ -251,6 +320,138 @@ async function handleKick(interaction) {
 
   log('Kick', `[${room}] guild=${targetGuildId} removed (${removed} channel(s)) by ${interaction.user.tag}@${interaction.guild.name}`);
   return reply(interaction, `Removed ${removed} channel(s) of guild \`${targetGuildId}\` from room "${room}".`);
+}
+
+async function handleWeblinkMode(interaction) {
+  const scope = interaction.options.getString('scope', true);
+  const mode = interaction.options.getString('mode', true);
+
+  let id;
+  if (scope === 'room') {
+    const channel = interaction.channel;
+    const entry = rooms.getChannel(channel.id);
+    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+    id = entry.room;
+  } else if (scope === 'guild') {
+    id = interaction.guild.id;
+  }
+
+  try {
+    await rooms.setWeblinkMode(scope, id, mode);
+    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    const modeName = {
+      'none': 'disabled',
+      'allowlist': 'allowlist (only listed domains allowed)',
+      'denylist': 'denylist (listed domains blocked)'
+    }[mode];
+    return reply(interaction, `Weblink filtering set to ${modeName} for ${scopeName}.`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleWeblinkAdd(interaction) {
+  const scope = interaction.options.getString('scope', true);
+  const domain = interaction.options.getString('domain', true);
+
+  let id;
+  if (scope === 'room') {
+    const channel = interaction.channel;
+    const entry = rooms.getChannel(channel.id);
+    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+    id = entry.room;
+  } else if (scope === 'guild') {
+    id = interaction.guild.id;
+  }
+
+  try {
+    await rooms.addToWeblinkList(scope, id, domain);
+    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    return reply(interaction, `Added "${domain}" to the weblink filter list for ${scopeName}.`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleWeblinkRemove(interaction) {
+  const scope = interaction.options.getString('scope', true);
+  const domain = interaction.options.getString('domain', true);
+
+  let id;
+  if (scope === 'room') {
+    const channel = interaction.channel;
+    const entry = rooms.getChannel(channel.id);
+    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+    id = entry.room;
+  } else if (scope === 'guild') {
+    id = interaction.guild.id;
+  }
+
+  try {
+    await rooms.removeFromWeblinkList(scope, id, domain);
+    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    return reply(interaction, `Removed "${domain}" from the weblink filter list for ${scopeName}.`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleWeblinkList(interaction) {
+  const scope = interaction.options.getString('scope', true);
+
+  let id;
+  if (scope === 'room') {
+    const channel = interaction.channel;
+    const entry = rooms.getChannel(channel.id);
+    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+    id = entry.room;
+  } else if (scope === 'guild') {
+    id = interaction.guild.id;
+  }
+
+  try {
+    const config = await rooms.getWeblinkConfig(scope, id);
+    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    const modeName = {
+      'none': 'Disabled (no filtering)',
+      'allowlist': 'Allowlist (only listed domains allowed)',
+      'denylist': 'Denylist (listed domains blocked)'
+    }[config.mode];
+
+    let response = `**Weblink filtering for ${scopeName}:**\nMode: ${modeName}`;
+
+    if (config.list.length > 0) {
+      response += '\n\n**Domains:**\n' + config.list.map(d => `- ${d}`).join('\n');
+    } else {
+      response += '\n\n**Domains:** (none configured)';
+    }
+
+    return reply(interaction, response);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleWeblinkClear(interaction) {
+  const scope = interaction.options.getString('scope', true);
+
+  let id;
+  if (scope === 'room') {
+    const channel = interaction.channel;
+    const entry = rooms.getChannel(channel.id);
+    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+    id = entry.room;
+  } else if (scope === 'guild') {
+    id = interaction.guild.id;
+  }
+
+  try {
+    await rooms.clearWeblinkList(scope, id);
+    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    return reply(interaction, `Cleared all domains from the weblink filter list for ${scopeName}.`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
 }
 
 function reply(interaction, content) {

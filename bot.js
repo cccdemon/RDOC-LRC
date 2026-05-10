@@ -5,6 +5,7 @@ const { commands, handleInteraction } = require('./commands');
 const rooms = require('./rooms');
 const tokens = require('./tokens');
 const audit = require('./audit');
+const weblink = require('./weblink');
 const { log, logErr } = require('./log');
 
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
@@ -51,6 +52,48 @@ async function onMessage(message) {
 
   const targets = rooms.getRoomMembers(entry.room).filter(m => m.channelId !== message.channelId);
   if (targets.length === 0) return;
+
+  // Check weblink filtering for room first, then guild as fallback
+  const roomConfig = await rooms.getWeblinkConfig('room', entry.room);
+  let weblinkConfig = roomConfig;
+
+  if (roomConfig.mode === 'none') {
+    // If room has no filtering, check guild-level config
+    weblinkConfig = await rooms.getWeblinkConfig('guild', message.guild.id);
+  }
+
+  if (weblinkConfig.mode !== 'none') {
+    const urls = weblink.extractUrls(message.content);
+    const check = weblink.checkWeblinkPolicy(urls, weblinkConfig.mode, weblinkConfig.list);
+
+    if (!check.allowed) {
+      // Delete the message and send warning
+      try {
+        await message.delete();
+        await message.channel.send({
+          content: `<@${message.author.id}> Your message was blocked: ${check.reason}`,
+          allowedMentions: { users: [message.author.id] }
+        }).then(reply => {
+          setTimeout(() => reply.delete().catch(() => {}), 10000); // Auto-delete warning after 10s
+        });
+      } catch (e) {
+        logErr('Weblink', `Failed to delete/block message: ${e.message}`);
+      }
+
+      // Audit the blocked message
+      audit.weblinkBlocked({
+        room: entry.room,
+        guildId: message.guild.id,
+        channelId: message.channelId,
+        userId: message.author.id,
+        reason: check.reason,
+        blockedUrl: check.blockedUrl,
+        messageContent: message.content
+      }).catch(e => logErr('Audit', e.message));
+
+      return; // Don't relay the message
+    }
+  }
 
   const displayName = message.member?.displayName || message.author.username;
   const avatarURL =

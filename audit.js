@@ -105,4 +105,20 @@ async function serverKicked({ room, targetGuildId, executedByGuildId, executedBy
   });
 }
 
-module.exports = { init, tokenConsumed, channelLeft, webhookError, serverKicked, COLORS };
+async function weblinkBlocked({ room, guildId, channelId, userId, reason, blockedUrl, messageContent }) {
+  await dispatch({
+    recipients: [guildId],
+    title: 'Bridge: weblink blocked',
+    color: COLORS.warning,
+    fields: [
+      { name: 'Room',      value: `\`${room}\``, inline: true },
+      { name: 'Channel',   value: `<#${channelId}>`, inline: true },
+      { name: 'User',      value: `<@${userId}>`, inline: true },
+      { name: 'Reason',    value: reason, inline: false },
+      { name: 'Blocked URL', value: blockedUrl, inline: false },
+      { name: 'Message',   value: (messageContent || '').slice(0, 500), inline: false },
+    ],
+  });
+}
+
+module.exports = { init, tokenConsumed, channelLeft, webhookError, serverKicked, weblinkBlocked, COLORS };
