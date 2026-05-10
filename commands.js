@@ -51,14 +51,7 @@ const commands = [
         .setRequired(true)))
     .addSubcommand(sub => sub
       .setName('weblink-mode')
-      .setDescription('Set weblink filtering mode for this room or server')
-      .addStringOption(o => o.setName('scope')
-        .setDescription('Scope of the filtering (room or guild)')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Room (affects all channels in this room)', value: 'room' },
-          { name: 'Guild (affects all rooms in this server)', value: 'guild' }
-        ))
+      .setDescription('Set weblink filtering mode for this room federation')
       .addStringOption(o => o.setName('mode')
         .setDescription('Filtering mode')
         .setRequired(true)
@@ -69,50 +62,22 @@ const commands = [
         )))
     .addSubcommand(sub => sub
       .setName('weblink-add')
-      .setDescription('Add a domain to the weblink filter list')
-      .addStringOption(o => o.setName('scope')
-        .setDescription('Scope of the filtering (room or guild)')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Room (affects all channels in this room)', value: 'room' },
-          { name: 'Guild (affects all rooms in this server)', value: 'guild' }
-        ))
+      .setDescription('Add a domain to the weblink filter list for this room federation')
       .addStringOption(o => o.setName('domain')
         .setDescription('Domain to add (e.g., example.com or *.example.com for wildcards)')
         .setRequired(true)))
     .addSubcommand(sub => sub
       .setName('weblink-remove')
-      .setDescription('Remove a domain from the weblink filter list')
-      .addStringOption(o => o.setName('scope')
-        .setDescription('Scope of the filtering (room or guild)')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Room (affects all channels in this room)', value: 'room' },
-          { name: 'Guild (affects all rooms in this server)', value: 'guild' }
-        ))
+      .setDescription('Remove a domain from the weblink filter list for this room federation')
       .addStringOption(o => o.setName('domain')
         .setDescription('Domain to remove')
         .setRequired(true)))
     .addSubcommand(sub => sub
       .setName('weblink-list')
-      .setDescription('Show current weblink filtering configuration')
-      .addStringOption(o => o.setName('scope')
-        .setDescription('Scope to check (room or guild)')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Room (current room configuration)', value: 'room' },
-          { name: 'Guild (server-wide configuration)', value: 'guild' }
-        )))
+      .setDescription('Show current weblink filtering configuration for this room federation'))
     .addSubcommand(sub => sub
       .setName('weblink-clear')
-      .setDescription('Clear all domains from the weblink filter list')
-      .addStringOption(o => o.setName('scope')
-        .setDescription('Scope to clear (room or guild)')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Room (clear room list)', value: 'room' },
-          { name: 'Guild (clear server list)', value: 'guild' }
-        ))),
+      .setDescription('Clear all domains from the weblink filter list for this room federation')),
 ];
 
 async function handleInteraction(interaction) {
@@ -329,138 +294,105 @@ async function handleKick(interaction) {
 }
 
 async function handleWeblinkMode(interaction) {
-  const scope = interaction.options.getString('scope', true);
   const mode = interaction.options.getString('mode', true);
 
-  let id;
-  if (scope === 'room') {
-    const channel = interaction.channel;
-    if (!channel) {
-      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
-    }
-
-    // For now, allow any text-based channel that is not a thread
-    if (!channel.isTextBased() || channel.isThread()) {
-      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
-    }
-
-    const entry = rooms.getChannel(channel.id);
-    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
-    id = entry.room;
-  } else if (scope === 'guild') {
-    id = interaction.guild.id;
+  const channel = interaction.channel;
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
   }
 
+  // For now, allow any text-based channel that is not a thread
+  if (!channel.isTextBased() || channel.isThread()) {
+    return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+  }
+
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+
   try {
-    await rooms.setWeblinkMode(scope, id, mode);
-    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    await rooms.setWeblinkMode('room', entry.room, mode);
     const modeName = {
       'none': 'disabled',
       'allowlist': 'allowlist (only listed domains allowed)',
       'denylist': 'denylist (listed domains blocked)'
     }[mode];
-    return reply(interaction, `Weblink filtering set to ${modeName} for ${scopeName}.`);
+    return reply(interaction, `Weblink filtering set to ${modeName} for room federation "${entry.room}".`);
   } catch (e) {
     return reply(interaction, `Error: ${e.message}`);
   }
 }
 
 async function handleWeblinkAdd(interaction) {
-  const scope = interaction.options.getString('scope', true);
   const domain = interaction.options.getString('domain', true);
 
-  let id;
-  if (scope === 'room') {
-    const channel = interaction.channel;
-    if (!channel) {
-      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
-    }
-
-    // For now, allow any text-based channel that is not a thread
-    if (!channel.isTextBased() || channel.isThread()) {
-      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
-    }
-
-    const entry = rooms.getChannel(channel.id);
-    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
-    id = entry.room;
-  } else if (scope === 'guild') {
-    id = interaction.guild.id;
+  const channel = interaction.channel;
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
   }
 
+  // For now, allow any text-based channel that is not a thread
+  if (!channel.isTextBased() || channel.isThread()) {
+    return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+  }
+
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+
   try {
-    await rooms.addToWeblinkList(scope, id, domain);
-    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
-    return reply(interaction, `Added "${domain}" to the weblink filter list for ${scopeName}.`);
+    await rooms.addToWeblinkList('room', entry.room, domain);
+    return reply(interaction, `Added "${domain}" to the weblink filter list for room federation "${entry.room}".`);
   } catch (e) {
     return reply(interaction, `Error: ${e.message}`);
   }
 }
 
 async function handleWeblinkRemove(interaction) {
-  const scope = interaction.options.getString('scope', true);
   const domain = interaction.options.getString('domain', true);
 
-  let id;
-  if (scope === 'room') {
-    const channel = interaction.channel;
-    if (!channel) {
-      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
-    }
-
-    // For now, allow any text-based channel that is not a thread
-    if (!channel.isTextBased() || channel.isThread()) {
-      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
-    }
-
-    const entry = rooms.getChannel(channel.id);
-    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
-    id = entry.room;
-  } else if (scope === 'guild') {
-    id = interaction.guild.id;
+  const channel = interaction.channel;
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
   }
 
+  // For now, allow any text-based channel that is not a thread
+  if (!channel.isTextBased() || channel.isThread()) {
+    return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+  }
+
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+
   try {
-    await rooms.removeFromWeblinkList(scope, id, domain);
-    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
-    return reply(interaction, `Removed "${domain}" from the weblink filter list for ${scopeName}.`);
+    await rooms.removeFromWeblinkList('room', entry.room, domain);
+    return reply(interaction, `Removed "${domain}" from the weblink filter list for room federation "${entry.room}".`);
   } catch (e) {
     return reply(interaction, `Error: ${e.message}`);
   }
 }
 
 async function handleWeblinkList(interaction) {
-  const scope = interaction.options.getString('scope', true);
-
-  let id;
-  if (scope === 'room') {
-    const channel = interaction.channel;
-    if (!channel) {
-      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
-    }
-
-    // For now, allow any text-based channel that is not a thread
-    if (!channel.isTextBased() || channel.isThread()) {
-      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
-    }
-
-    const entry = rooms.getChannel(channel.id);
-    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
-    id = entry.room;
-  } else if (scope === 'guild') {
-    id = interaction.guild.id;
+  const channel = interaction.channel;
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
   }
 
+  // For now, allow any text-based channel that is not a thread
+  if (!channel.isTextBased() || channel.isThread()) {
+    return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+  }
+
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+
   try {
-    const config = await rooms.getWeblinkConfig(scope, id);
-    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
+    const config = await rooms.getWeblinkConfig('room', entry.room);
     const modeName = {
       'none': 'Disabled (no filtering)',
       'allowlist': 'Allowlist (only listed domains allowed)',
       'denylist': 'Denylist (listed domains blocked)'
     }[config.mode];
 
-    let response = `**Weblink filtering for ${scopeName}:**\nMode: ${modeName}`;
+    let response = `**Weblink filtering for room federation "${entry.room}":**\nMode: ${modeName}`;
 
     if (config.list.length > 0) {
       response += '\n\n**Domains:**\n' + config.list.map(d => `- ${d}`).join('\n');
@@ -475,31 +407,22 @@ async function handleWeblinkList(interaction) {
 }
 
 async function handleWeblinkClear(interaction) {
-  const scope = interaction.options.getString('scope', true);
-
-  let id;
-  if (scope === 'room') {
-    const channel = interaction.channel;
-    if (!channel) {
-      return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
-    }
-
-    // For now, allow any text-based channel that is not a thread
-    if (!channel.isTextBased() || channel.isThread()) {
-      return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
-    }
-
-    const entry = rooms.getChannel(channel.id);
-    if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
-    id = entry.room;
-  } else if (scope === 'guild') {
-    id = interaction.guild.id;
+  const channel = interaction.channel;
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information. Channel is null/undefined.');
   }
 
+  // For now, allow any text-based channel that is not a thread
+  if (!channel.isTextBased() || channel.isThread()) {
+    return reply(interaction, `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}`);
+  }
+
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return reply(interaction, 'This channel is not linked to any bridge room.');
+
   try {
-    await rooms.clearWeblinkList(scope, id);
-    const scopeName = scope === 'room' ? `room "${id}"` : 'this server';
-    return reply(interaction, `Cleared all domains from the weblink filter list for ${scopeName}.`);
+    await rooms.clearWeblinkList('room', entry.room);
+    return reply(interaction, `Cleared all domains from the weblink filter list for room federation "${entry.room}".`);
   } catch (e) {
     return reply(interaction, `Error: ${e.message}`);
   }

@@ -53,14 +53,8 @@ async function onMessage(message) {
   const targets = rooms.getRoomMembers(entry.room).filter(m => m.channelId !== message.channelId);
   if (targets.length === 0) return;
 
-  // Check weblink filtering for room first, then guild as fallback
-  const roomConfig = await rooms.getWeblinkConfig('room', entry.room);
-  let weblinkConfig = roomConfig;
-
-  if (roomConfig.mode === 'none') {
-    // If room has no filtering, check guild-level config
-    weblinkConfig = await rooms.getWeblinkConfig('guild', message.guild.id);
-  }
+  // Check weblink filtering for the room federation
+  const weblinkConfig = await rooms.getWeblinkConfig('room', entry.room);
 
   if (weblinkConfig.mode !== 'none') {
     const urls = weblink.extractUrls(message.content);
@@ -71,7 +65,7 @@ async function onMessage(message) {
       try {
         await message.delete();
         await message.channel.send({
-          content: `<@${message.author.id}> Your message was blocked: ${check.reason}`,
+          content: `<@${message.author.id}> Your message was deleted because it contained a link violation: ${check.reason}`,
           allowedMentions: { users: [message.author.id] }
         }).then(reply => {
           setTimeout(() => reply.delete().catch(() => {}), 10000); // Auto-delete warning after 10s
