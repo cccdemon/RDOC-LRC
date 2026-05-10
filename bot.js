@@ -65,6 +65,19 @@ async function onMessage(message) {
 
     if (!check.allowed) {
       console.log(`[WEBLINK DEBUG] Blocking message - attempting to delete`);
+      
+      // Check if bot has permission to delete messages
+      const botPermissions = message.guild.members.me.permissionsIn(message.channel);
+      const canDelete = botPermissions.has('ManageMessages');
+      console.log(`[WEBLINK DEBUG] Bot has ManageMessages permission: ${canDelete}`);
+      
+      if (!canDelete) {
+        console.log(`[WEBLINK DEBUG] Bot lacks ManageMessages permission, cannot delete message`);
+        // Still don't relay the message, but log the issue
+        logErr('Weblink', 'Bot lacks ManageMessages permission to delete blocked messages');
+        return;
+      }
+      
       // Delete the message and send warning
       try {
         await message.delete();
