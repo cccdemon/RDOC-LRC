@@ -153,8 +153,8 @@ const kWeblinkMode = (scope, id) => `rdoc:weblink:mode:${scope}:${id}`;
 const kWeblinkList = (scope, id) => `rdoc:weblink:list:${scope}:${id}`;
 
 async function setWeblinkMode(scope, id, mode) {
-  if (!['none', 'allowlist', 'denylist'].includes(mode)) {
-    throw new Error('Invalid mode. Must be "none", "allowlist", or "denylist"');
+  if (!['none', 'allowlist'].includes(mode)) {
+    throw new Error('Invalid mode. Must be "none" or "allowlist"');
   }
   if (!['room', 'guild'].includes(scope)) {
     throw new Error('Invalid scope. Must be "room" or "guild"');

@@ -66,14 +66,6 @@ function checkWeblinkPolicy(urls, mode, list) {
         blockedUrl: url.full
       };
     }
-
-    if (mode === 'denylist' && isMatch) {
-      return {
-        allowed: false,
-        reason: `Domain "${url.domain}" is in the denylist`,
-        blockedUrl: url.full
-      };
-    }
   }
 
   return { allowed: true };

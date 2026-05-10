@@ -57,8 +57,7 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: 'Disabled (no filtering)', value: 'none' },
-          { name: 'Allowlist (only listed domains allowed)', value: 'allowlist' },
-          { name: 'Denylist (listed domains blocked)', value: 'denylist' }
+          { name: 'Allowlist (only listed domains allowed)', value: 'allowlist' }
         )))
     .addSubcommand(sub => sub
       .setName('weblink-add')
@@ -313,8 +312,7 @@ async function handleWeblinkMode(interaction) {
     await rooms.setWeblinkMode('room', entry.room, mode);
     const modeName = {
       'none': 'disabled',
-      'allowlist': 'allowlist (only listed domains allowed)',
-      'denylist': 'denylist (listed domains blocked)'
+      'allowlist': 'allowlist (only listed domains allowed)'
     }[mode];
     return reply(interaction, `Weblink filtering set to ${modeName} for room federation "${entry.room}".`);
   } catch (e) {
@@ -388,8 +386,7 @@ async function handleWeblinkList(interaction) {
     const config = await rooms.getWeblinkConfig('room', entry.room);
     const modeName = {
       'none': 'Disabled (no filtering)',
-      'allowlist': 'Allowlist (only listed domains allowed)',
-      'denylist': 'Denylist (listed domains blocked)'
+      'allowlist': 'Allowlist (only listed domains allowed)'
     }[config.mode];
 
     let response = `**Weblink filtering for room federation "${entry.room}":**\nMode: ${modeName}`;
