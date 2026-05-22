@@ -199,11 +199,45 @@ async function handleList(interaction) {
   const entries = rooms.getGuildChannels(interaction.guildId);
   if (entries.length === 0) return reply(interaction, 'No channels in this server are linked to a bridge room.');
 
-  const lines = entries.map(e => {
-    const ch = interaction.guild.channels.cache.get(e.channelId);
-    return `- ${ch ? `#${ch.name}` : `<#${e.channelId}>`} -> "${e.room}"`;
-  });
-  return reply(interaction, lines.join('\n'));
+  const byRoom = new Map();
+  for (const e of entries) {
+    if (!byRoom.has(e.room)) byRoom.set(e.room, []);
+    byRoom.get(e.room).push(e);
+  }
+
+  const lines = [];
+  for (const room of [...byRoom.keys()].sort()) {
+    lines.push(`**Room "${room}"**`);
+
+    for (const e of byRoom.get(room)) {
+      const ch = interaction.guild.channels.cache.get(e.channelId);
+      lines.push(`- Channel here: ${ch ? `#${ch.name}` : `<#${e.channelId}>`}`);
+    }
+
+    const members = rooms.getRoomMembers(room);
+    const byGuild = new Map();
+    for (const m of members) {
+      if (!byGuild.has(m.guildId)) byGuild.set(m.guildId, m);
+    }
+
+    lines.push(`- Federated servers (${byGuild.size}):`);
+    const sortedGuilds = [...byGuild.entries()].sort((a, b) => {
+      const an = interaction.client.guilds?.cache?.get(a[0])?.name || a[1].guildName || a[0];
+      const bn = interaction.client.guilds?.cache?.get(b[0])?.name || b[1].guildName || b[0];
+      return String(an).localeCompare(String(bn));
+    });
+    for (const [gid, m] of sortedGuilds) {
+      const liveName = interaction.client.guilds?.cache?.get(gid)?.name;
+      const name = liveName || m.guildName || '(unknown)';
+      const here = gid === interaction.guildId ? ' — this server' : '';
+      lines.push(`  - ${name} (\`${gid}\`)${here}`);
+    }
+    lines.push('');
+  }
+
+  let content = lines.join('\n').trimEnd();
+  if (content.length > 1900) content = content.slice(0, 1900) + '\n…(truncated)';
+  return reply(interaction, content);
 }
 
 async function handleRooms(interaction) {

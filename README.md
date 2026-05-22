@@ -27,6 +27,7 @@ Self-hosted Discord bot that bridges arbitrary text channels across multiple gui
 3. **General Information** → copy the **Application ID**.
 4. **OAuth2 → URL Generator** → scopes: `bot`, `applications.commands`. Bot permissions: `View Channels`, `Send Messages`, `Embed Links`, `Attach Files`, `Manage Webhooks`, `Use Application Commands`.
 5. Use that URL to invite the bot to every guild you want bridged.
+https://discord.com/oauth2/authorize?client_id=1502198332594978916&permissions=140123629648&integration_type=0&scope=bot+applications.commands
 
 ### 2. Configure and run
 

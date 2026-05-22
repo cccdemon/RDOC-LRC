@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code working on this repo.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 # Raumdock-Longrange-Communicator (RDOC-LC)
 
@@ -153,14 +153,28 @@ Designed to be run with `docker exec rdoc-lc-bot node bin/admin.js ...` (or `npm
 
 ## Development
 
+Node 20+ is required (see `engines` in `package.json`).
+
 ```bash
 npm install                                          # local dev (without Docker)
+npm run dev                                          # node --watch server.js (auto-restart)
 docker compose up -d --build                         # full stack
 docker compose logs -f bot                           # tail bot logs
 docker exec rdoc-lc-bot npm run admin -- <args>      # CLI inside container
 ```
 
+For local dev against a non-Docker Redis:
+`REDIS_HOST=127.0.0.1 DISCORD_TOKEN=... DISCORD_APP_ID=... npm run dev`
+
+There is no test suite, linter, or build step. Iteration is by running the bot (Docker or `npm run dev`) and exercising slash commands against a real Discord application + Redis.
+
 `/health` (port 3007) returns `{ status, gateway, guilds, rooms, redis }`.
+
+## Misc constraints
+
+- Room name regex (enforced in `commands.js` / `bin/admin.js`): `^[a-z0-9][a-z0-9-]{1,30}$`.
+- Default token expiry: 168 hours (7 days). Override with `--expires-h=<n>` on `token create` / `token create-kick`.
+- Token prefix for `token revoke` must be at least 8 chars and unambiguous; ambiguous prefixes are rejected.
 
 ## Operator runbook
 
