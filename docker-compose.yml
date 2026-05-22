@@ -63,8 +63,9 @@ services:
         condition: service_healthy
     networks: [rdoc-lc]
     ports:
-      - "80:80"
-      - "443:443"
+      - "${RDOC_LRC_HTTP_PORT:-3016}:80"
+      - "${RDOC_LRC_HTTPS_PORT:-3017}:443"
+      - "${RDOC_LRC_HTTPS_PORT:-3017}:443/udp"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
