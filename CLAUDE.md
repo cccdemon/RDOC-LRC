@@ -137,7 +137,7 @@ Designed to be run with `docker exec rdoc-lc-bot node bin/admin.js ...` (or `npm
 - `log(tag, ...)` / `logErr(tag, ...)` — never raw `console.log`.
 - Strict mode in every JS file (`'use strict'`).
 - All slash command replies are ephemeral.
-- No PostgreSQL. No HTTP routes other than `/health`.
+- No PostgreSQL.
 - All relays disable @mentions via `allowedMentions: { parse: [] }`.
 - No emojis in code or docs unless the user explicitly asks.
 - Never expose tokens in logs except as a 13-char prefix (e.g. `token=rdoc-Vk7m-9p...`).
@@ -147,7 +147,6 @@ Designed to be run with `docker exec rdoc-lc-bot node bin/admin.js ...` (or `npm
 - Edit / delete propagation
 - Replies-as-quotes, stickers, voice messages, embed re-rendering
 - Cross-guild emoji / mention rewriting
-- Web/admin UI
 - Per-room rate limiting
 - Encryption of webhook URLs at rest
 
@@ -176,6 +175,101 @@ There is no test suite, linter, or build step. Iteration is by running the bot (
 - Default token expiry: 168 hours (7 days). Override with `--expires-h=<n>` on `token create` / `token create-kick`.
 - Token prefix for `token revoke` must be at least 8 chars and unambiguous; ambiguous prefixes are rejected.
 
+## Web UI (`web/`)
+
+Optional admin UI mounted on the same Express instance as `/health`. Server-rendered EJS with a tiny HTMX layer (polling on the audit page only). Disabled unless `DISCORD_OAUTH_CLIENT_ID`, `DISCORD_OAUTH_CLIENT_SECRET`, and `WEB_PUBLIC_URL` are all set.
+
+### Layout
+
+| File | Purpose |
+|---|---|
+| `web/index.js`         | `mountWeb(app, redis)` — wires session, OAuth callback, routers, 404 + 500 handlers. Reads env vars; bails out (no mount) if OAuth config absent. |
+| `web/session.js`       | Redis-backed sessions (no `express-session` dep). 32-byte base64url session ID in HttpOnly+SameSite=Lax cookie. CSRF token generated on login, stored in the session HASH. Flash helper (`res.flash` / `req.consumeFlash`) backed by `rdoc:webui:flash:<sid>` with 60s TTL. `destroyAllForUser` scans + deletes all session keys for a Discord user ID (used when removing a user). |
+| `web/oauth.js`         | Discord OAuth `identify` scope. Anti-CSRF `state` is stored in `rdoc:webui:oauth:state:<state>` with 600s TTL and is single-use. |
+| `web/users.js`         | Role storage (`rdoc:webui:user:<discordUserId>` HASH: `role`, `username`, `addedBy`, `addedAt`, `updatedAt`). `bootstrapAdmin(userId)` ensures the env-configured user is admin on every startup. |
+| `web/audit.js`         | `rdoc:webui:audit` LIST. `LPUSH` + `LTRIM` keeps the newest 5000 entries. Read via `list({ limit, offset })` / `count()`. Append never throws. |
+| `web/ratelimit.js`     | Atomic `INCR` + `EXPIRE` per `<bucket>:<userIdOrIp>`. 429 with `Retry-After`. Falls open on Redis errors. |
+| `web/middleware.js`    | `requireAuth`, `requireRole('admin')`, `requireCsrf` (matches `req.body._csrf` against `req.session.csrf`). |
+| `web/routes/tokens.js` | `/tokens` listing + create-join / create-kick / revoke (admin). Rate-limited bucket `token-create` 60/min/user. |
+| `web/routes/rooms.js`  | `/rooms` + `/rooms/:room` + per-room and global prune (admin) + per-room weblink mode + allowlist add/remove/clear (admin). |
+| `web/routes/users.js`  | Admin-only. Add, change role, remove (also calls `session.destroyAllForUser`). Refuses self-removal, self-demotion, and last-admin demotion/removal. Factory: `createUsersRouter(redis)`. |
+| `web/routes/audit.js`  | Admin-only `/audit` (paginated 50/page) and `/audit/fragment` (rows-only, HTMX target). |
+| `web/views/`           | EJS partials: `_header.ejs`, `_footer.ejs`; pages: `login`, `dashboard`, `tokens`, `rooms`, `room-detail`, `room-weblink`, `users`, `audit`, `audit-rows` (HTMX partial), `error`. |
+| `web/public/`          | `style.css`, `htmx.min.js` (v2.0.4, self-hosted, ~51 KB). |
+
+### Auth & role flow
+
+1. Anonymous GET `/login` → click → `/auth/start` → 302 to Discord OAuth (`scope=identify`).
+2. `/auth/callback?code&state` — consumes `state` from Redis (single-use), exchanges `code` for an access token, fetches `users/@me`.
+3. Lookup `rdoc:webui:user:<id>`. If absent: 403 + `auth.login.unauthorized` audit entry. If present: `setUsername`, issue session, audit `auth.login`.
+4. Session cookie `rdoc_sid` HttpOnly+SameSite=Lax+Secure (Secure inferred from `X-Forwarded-Proto: https` — `trust proxy` is set).
+
+Role gating is **per-route via middleware**, not based on the rendered UI alone — moderators can still see `/tokens` and `/rooms` but POST to `/tokens/revoke`, `/rooms/*/prune`, `/rooms/*/weblink/*`, or any `/users/*` returns 403.
+
+### Role matrix
+
+| Action | Moderator | Admin |
+|---|---|---|
+| View/create join+kick tokens | ✓ | ✓ |
+| Revoke token |   | ✓ |
+| View rooms + members | ✓ | ✓ |
+| Prune stale channels (per-room or global) |   | ✓ |
+| Per-room weblink mode + allowlist |   | ✓ |
+| Manage web UI users (add/role/remove) |   | ✓ |
+| View audit log |   | ✓ |
+
+### Redis keys added by the web UI
+
+```
+rdoc:webui:user:<discordUserId>  HASH  { role, username, addedBy, addedAt, updatedAt }
+rdoc:webui:users                 SET   member user IDs (for listing)
+rdoc:webui:session:<sid>         HASH  { userId, username, role, loginAt, csrf } + PEXPIREAT 7d
+rdoc:webui:flash:<sid>           STRING (JSON) EXPIRE 60s
+rdoc:webui:oauth:state:<state>   STRING (returnTo) EXPIRE 600s, single-use
+rdoc:webui:audit                 LIST   JSON entries, LTRIM to 5000
+rdoc:webui:rl:<bucket>:<key>     STRING counter + EXPIRE windowSec
+```
+
+### Live behavior
+
+- `pruneStale` reuses `bot.getClient()` instead of spinning up a separate Discord login (the `state cleanup` CLI subcommand does its own login because it has no live process).
+- Audit page (`/audit?page=0`) polls `/audit/fragment` every 5s via htmx `hx-trigger="every 5s"`. Older pages don't poll.
+- Newly-created tokens are shown **once** in a flash banner with a copy-to-clipboard button. After that they appear in the table only as 13-char prefixes; revoke sends only the prefix back to the server.
+
+### Production deployment
+
+Sits behind LXC 101's TLS-passthrough SNI router. New hostname `relay.raumdock.org`. The TLS-terminating upstream is the existing Caddy on `10.10.10.99:443` (the one that fronts `*.streaming.raumdock.org`); add a vhost there proxying to the bot's `:3007`.
+
+**LXC 101** (`/etc/nginx/stream.d/minecraft.raumdock.org.conf`) — extend the SNI map; reuse the existing `10.10.10.99:443` upstream, no new upstream block:
+
+```
+map $ssl_preread_server_name $upstream {
+  ...
+  relay.raumdock.org    <existing-upstream-for-:443>;
+}
+```
+
+**Caddy on 10.10.10.99**:
+
+```caddyfile
+relay.raumdock.org {
+  reverse_proxy 127.0.0.1:3007
+}
+```
+
+`/health` stays open (no auth) so existing monitoring keeps working. Every other path goes through the session middleware.
+
+### Web UI env vars
+
+| Name | Required | Notes |
+|---|---|---|
+| `DISCORD_OAUTH_CLIENT_ID` / `DISCORD_OAUTH_CLIENT_SECRET` | only if web UI enabled | From Discord developer portal → OAuth2. |
+| `WEB_PUBLIC_URL` | only if web UI enabled | e.g. `https://relay.raumdock.org`. Used to construct the redirect URI. |
+| `WEB_SESSION_SECRET` | reserved | Not currently consumed; reserved for a future signed-cookie scheme. |
+| `RDOC_BOOTSTRAP_ADMIN_ID` | recommended | Discord user ID granted `admin` on every startup. Recovery hatch. |
+
+The Discord application's OAuth2 redirect URI must be `<WEB_PUBLIC_URL>/auth/callback`.
+
 ## Operator runbook
 
 1. **Add a new community to an existing room.**
@@ -194,3 +288,4 @@ There is no test suite, linter, or build step. Iteration is by running the bot (
 5. **Audit room membership.**
    - `docker exec rdoc-lc-bot npm run admin -- room list`
    - `docker exec rdoc-lc-bot npm run admin -- room members <room>`
+6. **Same operations via the web UI (if enabled).** Browse `https://relay.raumdock.org`; sign in with an authorized Discord account. Tokens, room members, weblink filtering, and audit log are all available without SSH. The CLI remains as a fallback when the UI is unreachable or for scripting.

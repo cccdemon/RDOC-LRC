@@ -27,4 +27,11 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get('/fragment', async (req, res, next) => {
+  try {
+    const entries = await audit.list({ limit: 50, offset: 0 });
+    res.render('audit-rows', { entries });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;

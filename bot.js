@@ -53,58 +53,40 @@ async function onMessage(message) {
   const targets = rooms.getRoomMembers(entry.room).filter(m => m.channelId !== message.channelId);
   if (targets.length === 0) return;
 
-  // Check weblink filtering for the room federation
   const weblinkConfig = await rooms.getWeblinkConfig('room', entry.room);
-  console.log(`[WEBLINK DEBUG] Room: ${entry.room}, Mode: ${weblinkConfig.mode}, List: ${JSON.stringify(weblinkConfig.list)}`);
 
   if (weblinkConfig.mode !== 'none') {
     const urls = weblink.extractUrls(message.content);
-    console.log(`[WEBLINK DEBUG] Message content: "${message.content}", URLs: ${JSON.stringify(urls)}`);
     const check = weblink.checkWeblinkPolicy(urls, weblinkConfig.mode, weblinkConfig.list);
-    console.log(`[WEBLINK DEBUG] Check result: ${JSON.stringify(check)}`);
 
     if (!check.allowed) {
-      console.log(`[WEBLINK DEBUG] Blocking message - attempting to delete`);
-      
-      // Check if bot has permission to delete messages
-      const botPermissions = message.guild.members.me.permissionsIn(message.channel);
-      const canDelete = botPermissions.has('ManageMessages');
-      console.log(`[WEBLINK DEBUG] Bot has ManageMessages permission: ${canDelete}`);
-      
+      const canDelete = message.guild.members.me.permissionsIn(message.channel).has('ManageMessages');
+
       if (!canDelete) {
-        console.log(`[WEBLINK DEBUG] Bot lacks ManageMessages permission, cannot delete message`);
-        logErr('Weblink', 'Bot lacks ManageMessages permission to delete blocked messages');
+        logErr('Weblink', `cannot delete blocked message in ${entry.room} (no ManageMessages): ${check.blockedUrl}`);
         try {
-          await message.channel.send({
+          const warn = await message.channel.send({
             content: `<@${message.author.id}> Your message contains a blocked link and could not be deleted because I do not have Manage Messages permission. The message will not be relayed.`,
-            allowedMentions: { users: [message.author.id] }
-          }).then(reply => {
-            setTimeout(() => reply.delete().catch(() => {}), 10000);
+            allowedMentions: { users: [message.author.id] },
           });
-          console.log(`[WEBLINK DEBUG] Warning sent without deleting original message`);
+          setTimeout(() => warn.delete().catch(() => {}), 10000);
         } catch (e) {
-          console.log(`[WEBLINK DEBUG] Failed to send warning when delete permission missing: ${e.message}`);
-          logErr('Weblink', `Failed to send warning for blocked message: ${e.message}`);
+          logErr('Weblink', `failed to send warning: ${e.message}`);
         }
       } else {
-        // Delete the message and send warning
         try {
           await message.delete();
-          console.log(`[WEBLINK DEBUG] Message deleted successfully`);
-          await message.channel.send({
+          const warn = await message.channel.send({
             content: `<@${message.author.id}> Your message was deleted because it contained a link violation: ${check.reason}`,
-            allowedMentions: { users: [message.author.id] }
-          }).then(reply => {
-            setTimeout(() => reply.delete().catch(() => {}), 10000); // Auto-delete warning after 10s
+            allowedMentions: { users: [message.author.id] },
           });
-          console.log(`[WEBLINK DEBUG] Warning sent`);
+          setTimeout(() => warn.delete().catch(() => {}), 10000);
         } catch (e) {
-          console.log(`[WEBLINK DEBUG] Failed to delete/block message: ${e.message}`);
-          logErr('Weblink', `Failed to delete/block message: ${e.message}`);
+          logErr('Weblink', `failed to delete/warn: ${e.message}`);
         }
       }
 
-      // Audit the blocked message
+      log('Weblink', `blocked in ${entry.room} by ${message.author.tag}: ${check.blockedUrl}`);
       audit.weblinkBlocked({
         room: entry.room,
         guildId: message.guild.id,
@@ -112,10 +94,10 @@ async function onMessage(message) {
         userId: message.author.id,
         reason: check.reason,
         blockedUrl: check.blockedUrl,
-        messageContent: message.content
+        messageContent: message.content,
       }).catch(e => logErr('Audit', e.message));
 
-      return; // Don't relay the message
+      return;
     }
   }
 

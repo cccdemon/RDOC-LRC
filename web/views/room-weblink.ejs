@@ -1,0 +1,78 @@
+<%- include('_header', { title: 'Weblink: ' + room, session: session }) %>
+
+<% if (flash && flash.error) { %><div class="flash flash-error"><%= flash.error %></div><% } %>
+<% if (flash && flash.ok) { %><div class="flash flash-ok"><%= flash.ok %></div><% } %>
+
+<p><a href="/rooms/<%= encodeURIComponent(room) %>" class="muted">&larr; Back to room</a></p>
+<h1>Weblink filter: <code><%= room %></code></h1>
+
+<div class="card">
+  <p class="muted">The weblink filter applies to the entire room federation. Messages from any guild in this room whose URLs don't match the allowlist (when the mode is "allowlist") are blocked and deleted. Mode "none" disables filtering entirely.</p>
+</div>
+
+<div class="card">
+  <h2>Mode</h2>
+  <p>Current: <strong><%= config.mode %></strong></p>
+  <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/weblink/mode">
+    <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+    <label>Set mode
+      <select name="mode" required>
+        <option value="none" <%= config.mode === 'none' ? 'selected' : '' %>>none &mdash; no filtering</option>
+        <option value="allowlist" <%= config.mode === 'allowlist' ? 'selected' : '' %>>allowlist &mdash; only listed domains</option>
+      </select>
+    </label>
+    <button type="submit" class="btn primary">Update mode</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Allowlist (<%= config.list.length %>)</h2>
+  <% if (config.list.length === 0) { %>
+    <p class="muted">No domains in the allowlist.</p>
+    <% if (config.mode === 'allowlist') { %>
+      <p class="error">Mode is "allowlist" but the list is empty &mdash; <strong>every URL is blocked</strong>. Add domains below or switch the mode to "none".</p>
+    <% } %>
+  <% } else { %>
+    <table class="data">
+      <thead><tr><th>Domain</th><th></th></tr></thead>
+      <tbody>
+        <% config.list.slice().sort().forEach(function(d) { %>
+          <tr>
+            <td><code><%= d %></code></td>
+            <td>
+              <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/weblink/remove" class="inline" onsubmit="return confirm('Remove \'<%= d %>\' from allowlist?');">
+                <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+                <input type="hidden" name="domain" value="<%= d %>">
+                <button type="submit" class="btn small danger">Remove</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Add domain</h2>
+  <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/weblink/add">
+    <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+    <label>Domain
+      <input name="domain" required placeholder="example.com or *.example.com" autocomplete="off">
+    </label>
+    <p class="muted small">Wildcard form <code>*.example.com</code> matches <code>example.com</code> itself and any subdomain. Plain <code>example.com</code> matches only the exact host.</p>
+    <button type="submit" class="btn primary">Add to allowlist</button>
+  </form>
+</div>
+
+<% if (config.list.length > 0) { %>
+  <div class="card">
+    <h2>Clear list</h2>
+    <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/weblink/clear" onsubmit="return confirm('Clear ALL <%= config.list.length %> domain(s) from the allowlist for room \'<%= room %>\'?');">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <button type="submit" class="btn danger">Clear all <%= config.list.length %> domain(s)</button>
+    </form>
+  </div>
+<% } %>
+
+<%- include('_footer') %>

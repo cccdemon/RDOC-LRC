@@ -45,6 +45,12 @@
 
 <% if (session.role === 'admin') { %>
   <div class="card">
+    <h2>Weblink filter</h2>
+    <p class="muted">Per-room URL allowlist. Affects every server in the federation.</p>
+    <p><a class="btn small" href="/rooms/<%= encodeURIComponent(room) %>/weblink">Manage weblink filter &rarr;</a></p>
+  </div>
+
+  <div class="card">
     <h2>Prune stale channels in this room</h2>
     <p class="muted">Contacts Discord for each member channel and removes any binding whose channel or guild no longer exists. Cache and Redis are updated atomically.</p>
     <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/prune" onsubmit="return confirm('Prune stale channels in room \'<%= room %>\'?');">

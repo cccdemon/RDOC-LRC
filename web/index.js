@@ -8,6 +8,7 @@ const oauth = require('./oauth');
 const users = require('./users');
 const { requireAuth, requireRole, requireCsrf } = require('./middleware');
 const audit = require('./audit');
+const ratelimit = require('./ratelimit');
 const tokensRouter = require('./routes/tokens');
 const roomsRouter = require('./routes/rooms');
 const createUsersRouter = require('./routes/users');
@@ -34,7 +35,10 @@ function mountWeb(app, redis) {
 
   users.init(redis);
   audit.init(redis);
+  ratelimit.init(redis);
   oauth.init({ clientId: cfg.clientId, clientSecret: cfg.clientSecret, redirectUri }, redis);
+
+  const authLimiter = ratelimit.limit({ bucket: 'auth', max: 10, windowSec: 60 });
 
   if (cfg.bootstrapAdminId) {
     users.bootstrapAdmin(cfg.bootstrapAdminId)
@@ -60,7 +64,7 @@ function mountWeb(app, redis) {
     });
   });
 
-  app.get('/auth/start', async (req, res, next) => {
+  app.get('/auth/start', authLimiter, async (req, res, next) => {
     try {
       const url = await oauth.startFlow(req.query.to ? String(req.query.to) : '/');
       res.redirect(url);
@@ -70,7 +74,7 @@ function mountWeb(app, redis) {
     }
   });
 
-  app.get('/auth/callback', async (req, res) => {
+  app.get('/auth/callback', authLimiter, async (req, res) => {
     try {
       const code = req.query.code ? String(req.query.code) : '';
       const state = req.query.state ? String(req.query.state) : '';

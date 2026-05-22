@@ -4,8 +4,11 @@ const express = require('express');
 const tokens = require('../../tokens');
 const rooms = require('../../rooms');
 const audit = require('../audit');
+const ratelimit = require('../ratelimit');
 const { requireAuth, requireRole, requireCsrf } = require('../middleware');
 const { log } = require('../../log');
+
+const createLimiter = ratelimit.limit({ bucket: 'token-create', max: 60, windowSec: 60 });
 
 const ROOM_NAME_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 const GUILD_ID_RE = /^\d{17,20}$/;
@@ -35,7 +38,7 @@ function parseHours(raw) {
   return n;
 }
 
-router.post('/create-join', requireCsrf, async (req, res, next) => {
+router.post('/create-join', createLimiter, requireCsrf, async (req, res, next) => {
   try {
     const room = String(req.body.room || '').toLowerCase().trim();
     const guildId = String(req.body.guildId || '').trim();
@@ -80,7 +83,7 @@ router.post('/create-join', requireCsrf, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/create-kick', requireCsrf, async (req, res, next) => {
+router.post('/create-kick', createLimiter, requireCsrf, async (req, res, next) => {
   try {
     const room = String(req.body.room || '').toLowerCase().trim();
     const targetGuildId = String(req.body.targetGuildId || '').trim();

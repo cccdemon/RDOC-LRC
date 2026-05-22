@@ -122,8 +122,15 @@ Audit failures (channel deleted, missing permissions) are silently dropped — n
 | `REDIS_HOST` | no | `redis` | Redis hostname |
 | `REDIS_PORT` | no | `6379` | Redis port |
 | `REDIS_DB` | no | `0` | Redis DB index |
-| `PORT` | no | `3007` | HTTP health port |
+| `PORT` | no | `3007` | HTTP port (health + web UI) |
 | `TZ` | no | `Europe/Berlin` | Container timezone |
+| `DISCORD_OAUTH_CLIENT_ID` | web UI | – | OAuth client ID (Discord dev portal → OAuth2) |
+| `DISCORD_OAUTH_CLIENT_SECRET` | web UI | – | OAuth client secret |
+| `WEB_PUBLIC_URL` | web UI | – | Public origin, e.g. `https://relay.raumdock.org`. The OAuth redirect URI registered in the Discord portal must be `<WEB_PUBLIC_URL>/auth/callback`. |
+| `WEB_SESSION_SECRET` | no | – | Reserved for future signed-cookie use; not currently consumed. |
+| `RDOC_BOOTSTRAP_ADMIN_ID` | web UI | – | Discord user ID granted admin on every startup (recovery hatch). |
+
+If any of the three `DISCORD_OAUTH_*` / `WEB_PUBLIC_URL` vars are unset, the web UI stays disabled and the bot starts up unchanged.
 
 ## Health endpoint
 
@@ -154,6 +161,27 @@ Redis only.
 | `rdoc:guild:<guildId>:audit_channel` | STRING | Configured audit channel ID (nullable) |
 
 Token consumption is atomic via a Redis Lua script — no race condition between two simultaneous `/bridge join` calls.
+
+## Web UI (optional)
+
+Browser-based admin UI mounted on the same port as `/health`. Provides everything the CLI does — token issuance, room/member listing, prune, weblink allowlist — plus a live audit log. Disabled unless `DISCORD_OAUTH_CLIENT_ID`, `DISCORD_OAUTH_CLIENT_SECRET`, and `WEB_PUBLIC_URL` are all set.
+
+**Auth.** Discord OAuth (`identify` scope only). The user signs in with their Discord account; only Discord user IDs already in the web UI users registry can sign in. Roles: `admin` (everything) or `moderator` (create join/kick tokens + view rooms/members). Bootstrap an initial admin via `RDOC_BOOTSTRAP_ADMIN_ID`.
+
+**Setup.**
+
+1. Discord developer portal → your application → OAuth2 → Redirects → add `<WEB_PUBLIC_URL>/auth/callback` (e.g. `https://relay.raumdock.org/auth/callback`).
+2. Copy the Client ID + Client Secret into `.env` and set `WEB_PUBLIC_URL`, `RDOC_BOOTSTRAP_ADMIN_ID`.
+3. Reverse-proxy `WEB_PUBLIC_URL` to the bot's `:3007`. Example (Caddy v2):
+   ```caddyfile
+   relay.raumdock.org {
+     reverse_proxy 127.0.0.1:3007
+   }
+   ```
+4. Restart the bot: `docker compose up -d --build bot`. Logs should show `WebUI Mounted at https://…`.
+5. Browse `WEB_PUBLIC_URL`. The bootstrap admin can then add more users at `/users`.
+
+**Security.** HttpOnly+SameSite=Lax session cookies (Secure when fronted by HTTPS). Per-session CSRF tokens on every form. Rate-limited OAuth and token-create endpoints. Append-only audit log capped at 5000 entries. Last-admin lockout protection. The CLI remains for fallback / scripting.
 
 ## Out of scope (current)
 
@@ -186,5 +214,4 @@ The Affero clause matters here: if you run a modified version of RDOC-LC as a ne
 
 # Open Tasks:
 
-- Add Havensupport (https://ancsemi.github.io/Haven/) 
-- better interface (a WebGUI)
+- Add Havensupport (https://ancsemi.github.io/Haven/)

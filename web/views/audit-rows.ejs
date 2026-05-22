@@ -1,0 +1,11 @@
+<% entries.forEach(function(e) { %>
+  <tr>
+    <td class="small mono"><%= new Date(e.ts).toISOString().slice(0, 19).replace('T', ' ') %></td>
+    <td>
+      <%= e.username || '(unknown)' %>
+      <% if (e.userId) { %><br><span class="muted small mono"><%= e.userId %></span><% } %>
+    </td>
+    <td><span class="action-tag"><%= e.action %></span></td>
+    <td class="small detail-cell"><%= JSON.stringify(e.details) %></td>
+  </tr>
+<% }) %>
