@@ -1,0 +1,13 @@
+<%- include('_header', { title: 'Dashboard', session: session }) %>
+<h1>Welcome, <%= session.username %></h1>
+<div class="card">
+  <table class="kv">
+    <tr><th>Discord user ID</th><td><code><%= session.userId %></code></td></tr>
+    <tr><th>Role</th><td><span class="role role-<%= session.role %>"><%= session.role %></span></td></tr>
+  </table>
+</div>
+<div class="card">
+  <h2>Status</h2>
+  <p>Phase 1 of the web UI: authentication only. Token management, room management, and user management screens are coming in subsequent phases.</p>
+</div>
+<%- include('_footer') %>

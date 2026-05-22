@@ -5,6 +5,7 @@ const Redis = require('ioredis');
 const { startBot, getBotStatus } = require('./bot');
 const { initRooms, summary } = require('./rooms');
 const tokens = require('./tokens');
+const { mountWeb } = require('./web');
 const { log, logErr } = require('./log');
 
 const CFG = {
@@ -63,6 +64,7 @@ async function main() {
   await initRooms(redis);
   tokens.init(redis);
   await startBot({ token: CFG.discordToken, appId: CFG.discordAppId });
+  mountWeb(app, redis);
   app.listen(CFG.port, () => log('RDOC-LC', `Health on :${CFG.port}`));
 }
 

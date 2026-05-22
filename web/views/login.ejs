@@ -1,0 +1,10 @@
+<%- include('_header', { title: 'Sign in', session: null }) %>
+<div class="card center">
+  <h1>RDOC-LC Admin</h1>
+  <p class="muted">Sign in with your authorized Discord account.</p>
+  <% if (error) { %>
+    <p class="error">Error: <%= error %></p>
+  <% } %>
+  <p><a class="btn primary" href="/auth/start<%= to && to !== '/' ? '?to=' + encodeURIComponent(to) : '' %>">Sign in with Discord</a></p>
+</div>
+<%- include('_footer') %>
