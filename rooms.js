@@ -97,6 +97,20 @@ function getGuildChannels(guildId) {
   return [...channelMap.values()].filter(e => e.guildId === guildId);
 }
 
+function listAllFederatedGuilds() {
+  const byGuild = new Map();
+  for (const [room, members] of roomMembers) {
+    for (const m of members.values()) {
+      if (!byGuild.has(m.guildId)) {
+        byGuild.set(m.guildId, { guildId: m.guildId, guildName: m.guildName || '', rooms: [] });
+      }
+      const e = byGuild.get(m.guildId);
+      if (!e.rooms.includes(room)) e.rooms.push(room);
+    }
+  }
+  return [...byGuild.values()];
+}
+
 function getWebhookClient(channelId) { return webhookClients.get(channelId) || null; }
 
 function summary() {
@@ -204,7 +218,7 @@ async function getWeblinkConfig(scope, id) {
 
 module.exports = {
   initRooms, join, leave,
-  getChannel, getRoomMembers, getGuildChannels, getWebhookClient,
+  getChannel, getRoomMembers, getGuildChannels, getWebhookClient, listAllFederatedGuilds,
   summary,
   pruneStale,
   setGuildAuditChannel, getGuildAuditChannel,

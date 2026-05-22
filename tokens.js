@@ -129,6 +129,7 @@ local tokenKey = KEYS[1]
 local tokensSet = KEYS[2]
 local token = ARGV[1]
 local now = tonumber(ARGV[2])
+local expectedTarget = ARGV[3]
 
 if redis.call('EXISTS', tokenKey) == 0 then
   return redis.error_reply('NOT_FOUND')
@@ -150,6 +151,10 @@ if expiresAt and expiresAt < now then
     redis.call('SREM', 'rdoc:room:' .. map['room'] .. ':tokens', token)
   end
   return redis.error_reply('EXPIRED')
+end
+
+if expectedTarget ~= '' and map['targetGuildId'] ~= expectedTarget then
+  return redis.error_reply('TARGET_MISMATCH')
 end
 
 redis.call('DEL', tokenKey)
@@ -183,17 +188,17 @@ async function consume({ token, room, guildId }) {
   return map;
 }
 
-async function consumeKick({ token }) {
+async function consumeKick({ token, expectedTargetGuildId }) {
   let result;
   try {
     result = await redis.eval(
       CONSUME_KICK_LUA, 2,
       kToken(token), K_TOKENS,
-      token, String(Date.now())
+      token, String(Date.now()), String(expectedTargetGuildId || '')
     );
   } catch (e) {
     const code = (e?.message || '').trim();
-    if (['NOT_FOUND', 'EXPIRED', 'WRONG_KIND'].includes(code)) {
+    if (['NOT_FOUND', 'EXPIRED', 'WRONG_KIND', 'TARGET_MISMATCH'].includes(code)) {
       throw new TokenError(code);
     }
     throw e;

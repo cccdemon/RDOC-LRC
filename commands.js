@@ -46,6 +46,10 @@ const commands = [
     .addSubcommand(sub => sub
       .setName('kick')
       .setDescription('Remove a server from a bridge room (requires a kick token from the operator)')
+      .addStringOption(o => o.setName('target')
+        .setDescription('Server to remove (pick from list)')
+        .setRequired(true)
+        .setAutocomplete(true))
       .addStringOption(o => o.setName('token')
         .setDescription('Kick token (rdoc-XXXX-XXXX-XXXX-XXXX) issued via the operator CLI')
         .setRequired(true)))
@@ -80,6 +84,9 @@ const commands = [
 ];
 
 async function handleInteraction(interaction) {
+  if (interaction.isAutocomplete?.() && interaction.commandName === 'bridge') {
+    return handleAutocomplete(interaction);
+  }
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'bridge') return;
 
@@ -271,20 +278,25 @@ async function handleAuditChannel(interaction) {
 }
 
 async function handleKick(interaction) {
+  const target = interaction.options.getString('target', true).trim();
   const token = interaction.options.getString('token', true).trim();
 
   if (!tokens.isValidFormat(token)) {
     return reply(interaction, 'Invalid token format. Expected `rdoc-XXXX-XXXX-XXXX-XXXX`.');
   }
+  if (!/^\d{17,20}$/.test(target)) {
+    return reply(interaction, 'Invalid target server. Pick one from the autocomplete list.');
+  }
 
   let data;
   try {
-    data = await tokens.consumeKick({ token });
+    data = await tokens.consumeKick({ token, expectedTargetGuildId: target });
   } catch (e) {
     const msg = ({
-      NOT_FOUND:   'Invalid or already-used token.',
-      EXPIRED:     'This token has expired.',
-      WRONG_KIND:  'This is a join token, not a kick token. Ask the operator for a kick token.',
+      NOT_FOUND:       'Invalid or already-used token.',
+      EXPIRED:         'This token has expired.',
+      WRONG_KIND:      'This is a join token, not a kick token. Ask the operator for a kick token.',
+      TARGET_MISMATCH: 'This kick token does not target the selected server. The token has NOT been consumed — pick the correct server or use the right token.',
     })[e.code] || `Token validation failed: ${e.message}`;
     logErr('Kick', `token rejected (${e.code || 'ERR'})`);
     return reply(interaction, msg);
@@ -461,6 +473,29 @@ async function handleWeblinkClear(interaction) {
 
 function reply(interaction, content) {
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+}
+
+async function handleAutocomplete(interaction) {
+  if (interaction.options.getSubcommand() !== 'kick') return interaction.respond([]);
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== 'target') return interaction.respond([]);
+
+  const query = String(focused.value || '').toLowerCase();
+  const guilds = rooms.listAllFederatedGuilds().map(g => {
+    const liveName = interaction.client.guilds?.cache?.get(g.guildId)?.name;
+    return { guildId: g.guildId, name: liveName || g.guildName || '(unknown)', rooms: g.rooms };
+  });
+
+  const filtered = guilds
+    .filter(g => g.name.toLowerCase().includes(query) || g.guildId.includes(query))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 25)
+    .map(g => ({
+      name: `${g.name} — ${g.rooms.join(', ')} (${g.guildId.slice(-6)})`.slice(0, 100),
+      value: g.guildId,
+    }));
+
+  return interaction.respond(filtered);
 }
 
 module.exports = { commands, handleInteraction };
