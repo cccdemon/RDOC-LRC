@@ -34,6 +34,11 @@ services:
       REDIS_DB: "0"
       PORT: "3007"
       TZ: ${TZ:-Europe/Berlin}
+      DISCORD_OAUTH_CLIENT_ID: ${DISCORD_OAUTH_CLIENT_ID:-}
+      DISCORD_OAUTH_CLIENT_SECRET: ${DISCORD_OAUTH_CLIENT_SECRET:-}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
+      WEB_SESSION_SECRET: ${WEB_SESSION_SECRET:-}
+      RDOC_BOOTSTRAP_ADMIN_ID: ${RDOC_BOOTSTRAP_ADMIN_ID:-}
     depends_on:
       redis:
         condition: service_healthy
