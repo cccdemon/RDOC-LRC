@@ -89,6 +89,20 @@ td.actions { white-space: nowrap; }
 th.actions-col { width: 1%; white-space: nowrap; }
 
 .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.rules-preview {
+  background: #f7f8fb; border: 1px solid #e2e2e8; border-radius: 5px;
+  padding: .8rem 1rem; margin: .5rem 0 1rem;
+  white-space: pre-wrap; word-wrap: break-word;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: .88rem; max-height: 360px; overflow: auto;
+}
+textarea[name="rules"] {
+  display: block; width: 100%; min-height: 200px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: .9rem; padding: .6rem .8rem;
+  border: 1px solid #d2d6df; border-radius: 5px;
+  box-sizing: border-box; margin: .35rem 0 .75rem;
+}
 .action-tag { display: inline-block; background: #eef0f3; color: #333; padding: .15rem .45rem; border-radius: 3px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .82rem; }
 .detail-cell { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; word-break: break-all; max-width: 380px; }
 .pagination { margin-top: 1rem; display: flex; gap: .5rem; }

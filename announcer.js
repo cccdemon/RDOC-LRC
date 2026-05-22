@@ -16,4 +16,15 @@ async function broadcastSystem(room, content) {
   }));
 }
 
-module.exports = { broadcastSystem };
+function formatRules(room, rules) {
+  return `**Room Rules — ${room}**\n\n${rules}`;
+}
+
+async function broadcastRules(room) {
+  const rules = await rooms.getRoomRules(room);
+  if (!rules) return false;
+  await broadcastSystem(room, formatRules(room, rules));
+  return true;
+}
+
+module.exports = { broadcastSystem, broadcastRules, formatRules };

@@ -55,12 +55,15 @@ router.get('/:room', async (req, res, next) => {
       (a.guildName || '').localeCompare(b.guildName || '') ||
       (a.channelName || '').localeCompare(b.channelName || '')
     );
+    const rules = (await rooms.getRoomRules(roomName)) || '';
     const flash = await req.consumeFlash();
     res.render('room-detail', {
       title: `Room: ${roomName}`,
       session: req.session,
       room: roomName,
       members: sorted,
+      rules,
+      rulesMax: rooms.ROOM_RULES_MAX,
       flash,
     });
   } catch (e) { next(e); }
@@ -208,6 +211,45 @@ router.post('/:room/weblink/clear', requireRole('admin'), requireCsrf, async (re
     });
     await res.flash({ ok: `Cleared all domains from allowlist for room "${roomName}".` });
     res.redirect(`/rooms/${encodeURIComponent(roomName)}/weblink`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/rules', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const raw = String(req.body.rules || '').replace(/\r\n/g, '\n').trim();
+    if (raw.length > rooms.ROOM_RULES_MAX) {
+      await res.flash({ error: `Rules too long (${raw.length} chars, max ${rooms.ROOM_RULES_MAX}).` });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.setRoomRules(roomName, raw);
+    log('WebUI', `rules ${raw ? 'set' : 'cleared'} room=${roomName} chars=${raw.length} by=${req.session.userId}`);
+    audit.append({
+      userId: req.session.userId, username: req.session.username,
+      action: raw ? 'rules.set' : 'rules.clear',
+      details: { room: roomName, chars: raw.length },
+    });
+    await res.flash({ ok: raw
+      ? `Rules updated for "${roomName}" (${raw.length} chars).`
+      : `Rules cleared for "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/rules/clear', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    await rooms.setRoomRules(roomName, null);
+    log('WebUI', `rules cleared room=${roomName} by=${req.session.userId}`);
+    audit.append({
+      userId: req.session.userId, username: req.session.username,
+      action: 'rules.clear',
+      details: { room: roomName },
+    });
+    await res.flash({ ok: `Rules cleared for "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
   } catch (e) { next(e); }
 });
 

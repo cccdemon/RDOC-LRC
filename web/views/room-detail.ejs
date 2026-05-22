@@ -43,6 +43,34 @@
   </table>
 </div>
 
+<div class="card">
+  <h2>Rules</h2>
+  <% if (rules) { %>
+    <p class="muted small">Posted to every channel in this room on <code>/bridge join</code>, and on <code>/bridge rules</code>.</p>
+    <pre class="rules-preview"><%= rules %></pre>
+  <% } else { %>
+    <p class="muted">No rules set for this room.</p>
+  <% } %>
+
+  <% if (session.role === 'admin') { %>
+    <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/rules">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <label for="rules-textarea">Rules (Markdown, max <%= rulesMax %> chars)</label>
+      <textarea id="rules-textarea" name="rules" rows="10" maxlength="<%= rulesMax %>" placeholder="**House rules**&#10;- Be respectful.&#10;- No spam.&#10;- ..."><%= rules %></textarea>
+      <p class="muted small">Empty input clears the rules. Discord Markdown is supported.</p>
+      <button type="submit" class="btn primary">Save rules</button>
+      <% if (rules) { %>
+        <button type="submit" form="rules-clear-form" class="btn danger">Clear rules</button>
+      <% } %>
+    </form>
+    <% if (rules) { %>
+      <form id="rules-clear-form" method="post" action="/rooms/<%= encodeURIComponent(room) %>/rules/clear" onsubmit="return confirm('Clear the rules for room \'<%= room %>\'?');" class="inline">
+        <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      </form>
+    <% } %>
+  <% } %>
+</div>
+
 <% if (session.role === 'admin') { %>
   <div class="card">
     <h2>Weblink filter</h2>

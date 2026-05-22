@@ -12,6 +12,9 @@ const K_ROOMS = 'rdoc:rooms';
 const kRoomMembers = (room) => `rdoc:room:${room}:members`;
 const kChannel = (channelId) => `rdoc:channel:${channelId}`;
 const kGuildAuditChannel = (guildId) => `rdoc:guild:${guildId}:audit_channel`;
+const kRoomRules = (room) => `rdoc:room:${room}:rules`;
+
+const ROOM_RULES_MAX = 1900;
 
 async function initRooms(redisClient) {
   redis = redisClient;
@@ -153,6 +156,22 @@ async function pruneStale(client, { roomFilter } = {}) {
   return { checked: entries.length, evicted: details.length, skipped, details };
 }
 
+async function getRoomRules(room) {
+  return await redis.get(kRoomRules(room));
+}
+
+async function setRoomRules(room, rules) {
+  const text = String(rules == null ? '' : rules);
+  if (text.length > ROOM_RULES_MAX) {
+    throw new Error(`Rules text too long (${text.length} chars, max ${ROOM_RULES_MAX})`);
+  }
+  if (!text) {
+    await redis.del(kRoomRules(room));
+    return;
+  }
+  await redis.set(kRoomRules(room), text);
+}
+
 async function setGuildAuditChannel(guildId, channelId) {
   if (channelId) await redis.set(kGuildAuditChannel(guildId), String(channelId));
   else           await redis.del(kGuildAuditChannel(guildId));
@@ -222,6 +241,7 @@ module.exports = {
   summary,
   pruneStale,
   setGuildAuditChannel, getGuildAuditChannel,
+  getRoomRules, setRoomRules, ROOM_RULES_MAX,
   setWeblinkMode, getWeblinkMode,
   addToWeblinkList, removeFromWeblinkList, getWeblinkList, clearWeblinkList,
   getWeblinkConfig,

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+const fs = require('fs');
 const Redis = require('ioredis');
 const tokens = require('../tokens');
 const rooms = require('../rooms');
@@ -48,6 +49,9 @@ function usage() {
     '  admin.js token revoke <prefix>           (prefix: at least 8 chars)',
     '  admin.js room list',
     '  admin.js room members <room>',
+    '  admin.js room rules <room>',
+    '  admin.js room set-rules <room> [--file=<path>]   (without --file: reads Markdown from stdin)',
+    '  admin.js room clear-rules <room>',
     '  admin.js state cleanup [--room=<name>]',
     '',
     'Notes:',
@@ -173,6 +177,59 @@ async function cmdRoomMembers(args) {
   }
 }
 
+function readStdinSync() {
+  try {
+    return fs.readFileSync(0, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+async function cmdRoomRules(args) {
+  const room = (args[0] || '').toLowerCase();
+  if (!room) fail('usage: room rules <room>');
+  if (!ROOM_NAME_RE.test(room)) fail('invalid room name');
+  const text = await rooms.getRoomRules(room);
+  if (!text) { process.stdout.write(`No rules set for room "${room}".\n`); return; }
+  process.stdout.write(`# Rules for room "${room}" (${text.length} chars)\n${text}\n`);
+}
+
+async function cmdRoomSetRules(args, flags) {
+  const room = (args[0] || '').toLowerCase();
+  if (!room) fail('usage: room set-rules <room> [--file=<path>]');
+  if (!ROOM_NAME_RE.test(room)) fail('invalid room name');
+
+  let text;
+  if (flags.file) {
+    try { text = fs.readFileSync(String(flags.file), 'utf8'); }
+    catch (e) { fail(`could not read --file=${flags.file}: ${e.message}`); }
+  } else {
+    if (process.stdin.isTTY) {
+      fail('no --file= given and stdin is a TTY. Pipe the rules text or use --file=<path>.');
+    }
+    text = readStdinSync();
+  }
+
+  text = text.replace(/\r\n/g, '\n').replace(/^﻿/, '').trim();
+  if (!text) fail('rules text is empty');
+
+  try {
+    await rooms.setRoomRules(room, text);
+  } catch (e) {
+    fail(e.message);
+  }
+  process.stdout.write(`Rules set for room "${room}" (${text.length} chars, max ${rooms.ROOM_RULES_MAX}).\n`);
+  process.stdout.write('They will be posted to every channel in the room on the next /bridge join, and on /bridge rules.\n');
+}
+
+async function cmdRoomClearRules(args) {
+  const room = (args[0] || '').toLowerCase();
+  if (!room) fail('usage: room clear-rules <room>');
+  if (!ROOM_NAME_RE.test(room)) fail('invalid room name');
+  await rooms.setRoomRules(room, null);
+  process.stdout.write(`Rules cleared for room "${room}".\n`);
+}
+
 async function cmdStateCleanup(args, flags) {
   const roomFilter = flags.room ? String(flags.room).toLowerCase() : null;
   if (roomFilter && !ROOM_NAME_RE.test(roomFilter)) fail('invalid --room value');
@@ -213,6 +270,9 @@ const ROUTES = {
   'token revoke':      cmdTokenRevoke,
   'room list':         cmdRoomList,
   'room members':      cmdRoomMembers,
+  'room rules':        cmdRoomRules,
+  'room set-rules':    cmdRoomSetRules,
+  'room clear-rules':  cmdRoomClearRules,
   'state cleanup':     cmdStateCleanup,
 };
 

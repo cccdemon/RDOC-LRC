@@ -54,6 +54,9 @@ const commands = [
         .setDescription('Kick token (rdoc-XXXX-XXXX-XXXX-XXXX) issued via the operator CLI')
         .setRequired(true)))
     .addSubcommand(sub => sub
+      .setName('rules')
+      .setDescription('Post this room\'s rules into the current channel'))
+    .addSubcommand(sub => sub
       .setName('weblink-mode')
       .setDescription('Set weblink filtering mode for this room federation')
       .addStringOption(o => o.setName('mode')
@@ -98,6 +101,7 @@ async function handleInteraction(interaction) {
     case 'rooms':          return handleRooms(interaction);
     case 'audit-channel':  return handleAuditChannel(interaction);
     case 'kick':           return handleKick(interaction);
+    case 'rules':          return handleRules(interaction);
     case 'weblink-mode':   return handleWeblinkMode(interaction);
     case 'weblink-add':    return handleWeblinkAdd(interaction);
     case 'weblink-remove': return handleWeblinkRemove(interaction);
@@ -172,7 +176,31 @@ async function handleJoin(interaction) {
   announcer.broadcastSystem(room, `**New Channel joined - ${shortName(interaction.guild.name)}**`)
     .catch(e => logErr('System', e.message));
 
+  announcer.broadcastRules(room)
+    .catch(e => logErr('System', `rules broadcast failed: ${e.message}`));
+
   return reply(interaction, `Linked #${channel.name} to room "${room}". This room now has ${total} channel(s) across all servers.`);
+}
+
+async function handleRules(interaction) {
+  const channel = interaction.channel;
+  if (!channel) {
+    return reply(interaction, 'Unable to determine channel information.');
+  }
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) {
+    return reply(interaction, 'This channel is not linked to any bridge room.');
+  }
+
+  const rulesText = await rooms.getRoomRules(entry.room);
+  if (!rulesText) {
+    return reply(interaction, `No rules set for room "${entry.room}". Ask the operator to set them.`);
+  }
+
+  return interaction.reply({
+    content: announcer.formatRules(entry.room, rulesText),
+    allowedMentions: { parse: [] },
+  });
 }
 
 async function handleLeave(interaction) {
