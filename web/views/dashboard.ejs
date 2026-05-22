@@ -1,13 +1,37 @@
 <%- include('_header', { title: 'Dashboard', session: session }) %>
 <h1>Welcome, <%= session.username %></h1>
+
 <div class="card">
+  <h2>Status</h2>
+  <div class="stats">
+    <div class="stat">
+      <span class="stat-label">Bot</span>
+      <span class="stat-value <%= stats.botReady ? 'ok' : 'warn' %>"><%= stats.botReady ? 'Connected' : 'Connecting' %></span>
+    </div>
+    <div class="stat"><span class="stat-label">Guilds</span><span class="stat-value"><%= stats.guildCount %></span></div>
+    <div class="stat"><span class="stat-label">Rooms</span><span class="stat-value"><%= stats.roomCount %></span></div>
+    <div class="stat"><span class="stat-label">Bridged channels</span><span class="stat-value"><%= stats.channelCount %></span></div>
+    <div class="stat"><span class="stat-label">Active tokens</span><span class="stat-value"><%= stats.tokenCount %> <span class="muted small">(<%= stats.joinTokens %> join, <%= stats.kickTokens %> kick)</span></span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>You</h2>
   <table class="kv">
     <tr><th>Discord user ID</th><td><code><%= session.userId %></code></td></tr>
     <tr><th>Role</th><td><span class="role role-<%= session.role %>"><%= session.role %></span></td></tr>
   </table>
 </div>
+
 <div class="card">
-  <h2>Status</h2>
-  <p>Phase 1 of the web UI: authentication only. Token management, room management, and user management screens are coming in subsequent phases.</p>
+  <h2>Quick actions</h2>
+  <ul class="links">
+    <li><a href="/tokens">Tokens &mdash; create join/kick, list, revoke</a></li>
+    <li><a href="/rooms">Rooms &mdash; list, members, prune stale channels</a></li>
+    <% if (session.role === 'admin') { %>
+      <li><a href="/users">Users &mdash; manage web UI access</a></li>
+      <li><a href="/audit">Audit log &mdash; recent actions</a></li>
+    <% } %>
+  </ul>
 </div>
 <%- include('_footer') %>

@@ -1,0 +1,86 @@
+<%- include('_header', { title: 'Users', session: session }) %>
+
+<% if (flash && flash.error) { %><div class="flash flash-error"><%= flash.error %></div><% } %>
+<% if (flash && flash.ok) { %><div class="flash flash-ok"><%= flash.ok %></div><% } %>
+
+<h1>Web UI users</h1>
+
+<div class="card">
+  <h2>Add user</h2>
+  <p class="muted">Authorize a Discord account to sign in. To get a Discord User ID: enable Developer Mode (Discord Settings &rarr; Advanced &rarr; Developer Mode), then right-click the user's avatar &rarr; Copy User ID.</p>
+  <form method="post" action="/users/add">
+    <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+    <label>Discord user ID
+      <input name="userId" required pattern="\d{17,20}" placeholder="123456789012345678" autocomplete="off">
+    </label>
+    <label>Role
+      <select name="role" required>
+        <option value="moderator">Moderator &mdash; create join/kick tokens, view rooms</option>
+        <option value="admin">Admin &mdash; full access</option>
+      </select>
+    </label>
+    <button type="submit" class="btn primary">Add user</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Authorized users (<%= users.length %>)</h2>
+  <% if (users.length === 0) { %>
+    <p class="muted">No users yet.</p>
+  <% } else { %>
+    <table class="data">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Discord ID</th>
+          <th>Role</th>
+          <th>Added</th>
+          <th class="actions-col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% users.forEach(function(u) { %>
+          <% var isSelf = u.userId === session.userId; %>
+          <tr>
+            <td>
+              <%= u.username || '(not yet signed in)' %>
+              <% if (isSelf) { %> <span class="muted small">(you)</span><% } %>
+            </td>
+            <td><code><%= u.userId %></code></td>
+            <td><span class="role role-<%= u.role %>"><%= u.role %></span></td>
+            <td class="small"><%= u.addedAt ? new Date(Number(u.addedAt)).toISOString().slice(0, 16).replace('T', ' ') : '?' %></td>
+            <td class="actions">
+              <form method="post" action="/users/set-role" class="inline">
+                <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+                <input type="hidden" name="userId" value="<%= u.userId %>">
+                <select name="role" class="inline-select">
+                  <option value="admin" <%= u.role === 'admin' ? 'selected' : '' %>>admin</option>
+                  <option value="moderator" <%= u.role === 'moderator' ? 'selected' : '' %>>moderator</option>
+                </select>
+                <button type="submit" class="btn small">Set</button>
+              </form>
+              <% if (!isSelf) { %>
+                <form method="post" action="/users/remove" class="inline" onsubmit="return confirm('Remove user <%= u.userId %>? This terminates all their sessions immediately.');">
+                  <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+                  <input type="hidden" name="userId" value="<%= u.userId %>">
+                  <button type="submit" class="btn small danger">Remove</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Notes</h2>
+  <ul class="small">
+    <li>The user identified by <code>RDOC_BOOTSTRAP_ADMIN_ID</code> (currently set in the bot's environment) is granted admin on every startup. Removing them here works until next restart.</li>
+    <li>You cannot remove yourself or demote yourself from admin &mdash; ask another admin or recover via the bootstrap env var.</li>
+    <li>You cannot demote or remove the last admin.</li>
+  </ul>
+</div>
+
+<%- include('_footer') %>

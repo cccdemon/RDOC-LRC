@@ -6,22 +6,16 @@ const express = require('express');
 const session = require('./session');
 const oauth = require('./oauth');
 const users = require('./users');
+const { requireAuth, requireRole, requireCsrf } = require('./middleware');
+const audit = require('./audit');
+const tokensRouter = require('./routes/tokens');
+const roomsRouter = require('./routes/rooms');
+const createUsersRouter = require('./routes/users');
+const auditRouter = require('./routes/audit');
+const rooms = require('../rooms');
+const tokensModule = require('../tokens');
+const bot = require('../bot');
 const { log, logErr } = require('../log');
-
-function requireAuth(req, res, next) {
-  if (!req.session) return res.redirect(`/login?to=${encodeURIComponent(req.originalUrl)}`);
-  return next();
-}
-
-function requireRole(role) {
-  return (req, res, next) => {
-    if (!req.session) return res.redirect(`/login?to=${encodeURIComponent(req.originalUrl)}`);
-    if (role === 'admin' && req.session.role !== 'admin') {
-      return res.status(403).render('error', { title: 'Forbidden', message: 'Admin role required for this page.', session: req.session });
-    }
-    next();
-  };
-}
 
 function mountWeb(app, redis) {
   const cfg = {
@@ -39,6 +33,7 @@ function mountWeb(app, redis) {
   const redirectUri = `${cfg.publicUrl}/auth/callback`;
 
   users.init(redis);
+  audit.init(redis);
   oauth.init({ clientId: cfg.clientId, clientSecret: cfg.clientSecret, redirectUri }, redis);
 
   if (cfg.bootstrapAdminId) {
@@ -92,6 +87,7 @@ function mountWeb(app, redis) {
       const user = await users.getUser(me.id);
       if (!user) {
         logErr('WebUI', `unauthorized login attempt: discordId=${me.id} username=${me.username}`);
+        audit.append({ userId: me.id, username: me.username, action: 'auth.login.unauthorized', details: {} });
         return res.status(403).render('error', {
           title: 'Not authorized',
           message: `Your Discord account "${me.username}" (ID ${me.id}) is not authorized to use this UI. Ask the admin to add you.`,
@@ -107,6 +103,7 @@ function mountWeb(app, redis) {
         loginAt: String(Date.now()),
       });
       log('WebUI', `login userId=${me.id} username=${me.username} role=${user.role}`);
+      audit.append({ userId: me.id, username: me.username, action: 'auth.login', details: { role: user.role } });
       const safe = /^\/[^/].*/.test(returnTo) ? returnTo : '/';
       res.redirect(safe);
     } catch (e) {
@@ -115,17 +112,50 @@ function mountWeb(app, redis) {
     }
   });
 
-  app.post('/logout', async (req, res) => {
+  app.post('/logout', requireCsrf, async (req, res) => {
     const uid = req.session?.userId;
+    const uname = req.session?.username;
     await res.logout();
-    if (uid) log('WebUI', `logout userId=${uid}`);
+    if (uid) {
+      log('WebUI', `logout userId=${uid}`);
+      audit.append({ userId: uid, username: uname, action: 'auth.logout', details: {} });
+    }
     res.redirect('/login');
   });
 
-  app.get('/', requireAuth, (req, res) => {
-    res.render('dashboard', {
-      title: 'Dashboard',
-      session: req.session,
+  app.get('/', requireAuth, async (req, res, next) => {
+    try {
+      const summary = rooms.summary();
+      const roomNames = Object.keys(summary);
+      const channelCount = roomNames.reduce((sum, name) => sum + summary[name], 0);
+      const allTokens = await tokensModule.list();
+      const botStatus = bot.getBotStatus();
+      res.render('dashboard', {
+        title: 'Dashboard',
+        session: req.session,
+        stats: {
+          botReady: botStatus.ready,
+          guildCount: botStatus.guilds,
+          roomCount: roomNames.length,
+          channelCount,
+          tokenCount: allTokens.length,
+          joinTokens: allTokens.filter(t => t.kind === 'join').length,
+          kickTokens: allTokens.filter(t => t.kind === 'kick').length,
+        },
+      });
+    } catch (e) { next(e); }
+  });
+
+  app.use('/tokens', tokensRouter);
+  app.use('/rooms', roomsRouter);
+  app.use('/users', createUsersRouter(redis));
+  app.use('/audit', auditRouter);
+
+  app.use((req, res) => {
+    res.status(404).render('error', {
+      title: 'Not found',
+      message: `Page not found: ${req.originalUrl}`,
+      session: req.session || null,
     });
   });
 
@@ -139,4 +169,4 @@ function mountWeb(app, redis) {
   return true;
 }
 
-module.exports = { mountWeb, requireAuth, requireRole };
+module.exports = { mountWeb, requireAuth, requireRole, requireCsrf };

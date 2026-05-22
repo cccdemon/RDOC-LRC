@@ -4,7 +4,13 @@ const crypto = require('crypto');
 
 const COOKIE = 'rdoc_sid';
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
+const FLASH_TTL_S = 60;
 const kSession = (id) => `rdoc:webui:session:${id}`;
+const kFlash = (id) => `rdoc:webui:flash:${id}`;
+
+function genCsrfToken() {
+  return crypto.randomBytes(24).toString('base64url');
+}
 
 function genId() {
   return crypto.randomBytes(32).toString('base64url');
@@ -48,28 +54,49 @@ function sessionMiddleware(redis) {
       if (sid) {
         const data = await redis.hgetall(kSession(sid));
         if (data && data.userId) {
+          if (!data.csrf) {
+            data.csrf = genCsrfToken();
+            await redis.hset(kSession(sid), { csrf: data.csrf });
+          }
           req.session = data;
           req.sessionId = sid;
         }
       }
       res.locals.session = req.session;
 
+      req.consumeFlash = async () => {
+        if (!req.sessionId) return null;
+        const raw = await redis.get(kFlash(req.sessionId));
+        if (raw === null) return null;
+        await redis.del(kFlash(req.sessionId));
+        try { return JSON.parse(raw); } catch { return null; }
+      };
+
+      res.flash = async (data) => {
+        if (!req.sessionId) return;
+        await redis.set(kFlash(req.sessionId), JSON.stringify(data), 'EX', FLASH_TTL_S);
+      };
+
       res.login = async (data) => {
         const id = genId();
+        const full = { ...data, csrf: genCsrfToken() };
         await redis.multi()
-          .hset(kSession(id), data)
+          .hset(kSession(id), full)
           .pexpire(kSession(id), SESSION_TTL_MS)
           .exec();
         res.setHeader('Set-Cookie', buildCookie(COOKIE, id, {
           maxAgeSec: Math.floor(SESSION_TTL_MS / 1000),
           secure: isSecure(req),
         }));
-        req.session = data;
+        req.session = full;
         req.sessionId = id;
       };
 
       res.logout = async () => {
-        if (req.sessionId) await redis.del(kSession(req.sessionId));
+        if (req.sessionId) {
+          await redis.del(kSession(req.sessionId));
+          await redis.del(kFlash(req.sessionId));
+        }
         res.setHeader('Set-Cookie', buildCookie(COOKIE, '', { maxAgeSec: 0, secure: isSecure(req) }));
         req.session = null;
         req.sessionId = null;

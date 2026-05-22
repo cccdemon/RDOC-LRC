@@ -1,0 +1,59 @@
+<%- include('_header', { title: 'Rooms', session: session }) %>
+
+<% if (flash && flash.error) { %>
+  <div class="flash flash-error"><%= flash.error %></div>
+<% } %>
+<% if (flash && flash.ok) { %>
+  <div class="flash flash-ok">
+    <p><%= flash.ok %></p>
+    <% if (flash.pruneDetails && flash.pruneDetails.length > 0) { %>
+      <ul class="small detail-list">
+        <% flash.pruneDetails.forEach(function(d) { %>
+          <li>room=<code><%= d.room %></code> guild=<code><%= d.guildId %></code> channel=<code><%= d.channelId %></code> &mdash; <%= d.reason %></li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </div>
+<% } %>
+
+<h1>Bridge rooms</h1>
+
+<div class="card">
+  <% if (rooms.length === 0) { %>
+    <p class="muted">No rooms yet.</p>
+  <% } else { %>
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Room</th>
+          <th>Channels</th>
+          <th>Servers</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% rooms.forEach(function(r) { %>
+          <tr>
+            <td><code><%= r.name %></code></td>
+            <td><%= r.channels %></td>
+            <td><%= r.guilds %></td>
+            <td><a href="/rooms/<%= encodeURIComponent(r.name) %>">View members &rarr;</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<% if (session.role === 'admin' && rooms.length > 0) { %>
+  <div class="card">
+    <h2>Maintenance</h2>
+    <p class="muted">Removes Redis bindings for channels that no longer exist in Discord (or whose guild the bot lost access to). Runs against the live bot connection &mdash; no restart required.</p>
+    <form method="post" action="/rooms/prune-all" onsubmit="return confirm('Prune stale channel bindings across ALL rooms? This contacts Discord for every binding.');">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <button type="submit" class="btn danger">Prune stale channels across all rooms</button>
+    </form>
+  </div>
+<% } %>
+
+<%- include('_footer') %>

@@ -31,3 +31,84 @@ code { background: #eef0f3; padding: .1rem .35rem; border-radius: 3px; font-fami
 table.kv { border-collapse: collapse; }
 table.kv th { text-align: left; padding: .35rem 1.25rem .35rem 0; color: #555; font-weight: 500; vertical-align: top; }
 table.kv td { padding: .35rem 0; }
+
+.nav { display: inline-flex; gap: 1rem; margin-left: 1.25rem; }
+.nav a { color: #c8c8d6; text-decoration: none; font-size: .9rem; }
+.nav a:hover { color: #fff; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+form label { display: block; margin: .5rem 0; font-size: .9rem; color: #444; }
+form input[type=text], form input[type=number], form input:not([type]), form select {
+  display: block; width: 100%; padding: .45rem .6rem; font-size: .95rem;
+  border: 1px solid #ccc; border-radius: 4px; background: #fff; margin-top: .25rem;
+}
+form input:focus, form select:focus { outline: none; border-color: #5865f2; }
+form .small { font-weight: normal; }
+form button { margin-top: .75rem; }
+
+.btn.small { padding: .3rem .7rem; font-size: .82rem; }
+.btn.danger { background: #e74c3c; color: #fff; }
+.btn.danger:hover { background: #c0392b; }
+form.inline { display: inline; margin: 0; }
+
+.flash { padding: .75rem 1rem; border-radius: 5px; margin-bottom: 1rem; }
+.flash-error { background: #fdecea; color: #c0392b; }
+.flash-ok { background: #e7f7eb; color: #1e7e34; }
+.flash-token { background: #fff7d6; color: #6a4f00; border: 1px solid #f1d96b; }
+.flash-token h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+.token-box {
+  background: #fff; border: 1px solid #e6c95f; padding: .8rem 1rem;
+  border-radius: 4px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1.15rem; letter-spacing: .04em; user-select: all; word-break: break-all;
+  margin: .5rem 0;
+}
+.small { font-size: .85rem; }
+
+table.data { width: 100%; border-collapse: collapse; margin-top: .5rem; font-size: .9rem; }
+table.data th { text-align: left; padding: .5rem .6rem; color: #555; font-weight: 500; border-bottom: 1px solid #e2e2e8; }
+table.data td { padding: .5rem .6rem; border-bottom: 1px solid #f0f0f4; vertical-align: middle; }
+table.data tr:last-child td { border-bottom: 0; }
+
+.kind { display: inline-block; padding: .12rem .5rem; border-radius: 3px; font-size: .72rem; text-transform: uppercase; font-weight: 600; letter-spacing: .04em; }
+.kind-join { background: #57f287; color: #1a1a2a; }
+.kind-kick { background: #ed4245; color: #fff; }
+
+ul.links { padding-left: 1.2rem; }
+ul.links li { margin: .35rem 0; }
+
+.detail-list { padding-left: 1.25rem; margin: .5rem 0 0; }
+.detail-list li { margin: .15rem 0; }
+
+hr { border: 0; border-top: 1px solid #e2e2e8; margin: 1rem 0; }
+
+form.inline select.inline-select,
+form.inline input { display: inline-block; width: auto; padding: .25rem .45rem; font-size: .85rem; margin: 0 .25rem 0 0; }
+td.actions { white-space: nowrap; }
+th.actions-col { width: 1%; white-space: nowrap; }
+
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.action-tag { display: inline-block; background: #eef0f3; color: #333; padding: .15rem .45rem; border-radius: 3px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .82rem; }
+.detail-cell { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; word-break: break-all; max-width: 380px; }
+.pagination { margin-top: 1rem; display: flex; gap: .5rem; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; }
+.stat { background: #f7f8fb; padding: .75rem 1rem; border-radius: 5px; }
+.stat-label { display: block; font-size: .75rem; text-transform: uppercase; color: #666; letter-spacing: .04em; margin-bottom: .25rem; }
+.stat-value { font-size: 1.3rem; font-weight: 600; color: #1a1a2a; }
+.stat-value.ok { color: #1e7e34; }
+.stat-value.warn { color: #c0392b; }
+
+@media (max-width: 720px) {
+  .topbar { flex-wrap: wrap; gap: .5rem; padding: .6rem .9rem; }
+  .topbar .nav { margin-left: 0; flex-wrap: wrap; gap: .75rem; }
+  .topbar .user { margin-left: 0; font-size: .82rem; }
+  .container { padding: 0 .9rem; margin: 1rem auto; }
+  .card { padding: 1rem 1.1rem; }
+  .token-box { font-size: .95rem; }
+  table.data { font-size: .82rem; }
+  table.data th, table.data td { padding: .35rem .4rem; }
+  .detail-cell { max-width: none; }
+  .stat-value { font-size: 1.1rem; }
+}

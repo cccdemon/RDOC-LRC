@@ -1,0 +1,57 @@
+<%- include('_header', { title: 'Room: ' + room, session: session }) %>
+
+<% if (flash && flash.error) { %>
+  <div class="flash flash-error"><%= flash.error %></div>
+<% } %>
+<% if (flash && flash.ok) { %>
+  <div class="flash flash-ok">
+    <p><%= flash.ok %></p>
+    <% if (flash.pruneDetails && flash.pruneDetails.length > 0) { %>
+      <ul class="small detail-list">
+        <% flash.pruneDetails.forEach(function(d) { %>
+          <li>guild=<code><%= d.guildId %></code> channel=<code><%= d.channelId %></code> &mdash; <%= d.reason %></li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </div>
+<% } %>
+
+<p><a href="/rooms" class="muted">&larr; All rooms</a></p>
+<h1>Room: <code><%= room %></code></h1>
+
+<div class="card">
+  <h2>Members (<%= members.length %>)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Server</th>
+        <th>Channel</th>
+        <th>Guild ID</th>
+        <th>Channel ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% members.forEach(function(m) { %>
+        <tr>
+          <td><%= m.guildName || '(unknown)' %></td>
+          <td><%= m.channelName ? '#' + m.channelName : '(unknown)' %></td>
+          <td><code><%= m.guildId %></code></td>
+          <td><code><%= m.channelId %></code></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<% if (session.role === 'admin') { %>
+  <div class="card">
+    <h2>Prune stale channels in this room</h2>
+    <p class="muted">Contacts Discord for each member channel and removes any binding whose channel or guild no longer exists. Cache and Redis are updated atomically.</p>
+    <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/prune" onsubmit="return confirm('Prune stale channels in room \'<%= room %>\'?');">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <button type="submit" class="btn danger">Prune stale channels</button>
+    </form>
+  </div>
+<% } %>
+
+<%- include('_footer') %>

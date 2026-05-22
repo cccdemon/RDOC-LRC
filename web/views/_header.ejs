@@ -10,8 +10,15 @@
 <header class="topbar">
   <a class="brand" href="/">RDOC-LC</a>
   <% if (typeof session !== 'undefined' && session) { %>
+    <nav class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/tokens">Tokens</a>
+      <a href="/rooms">Rooms</a>
+      <% if (session.role === 'admin') { %><a href="/users">Users</a><a href="/audit">Audit</a><% } %>
+    </nav>
     <span class="user"><%= session.username %> <span class="role role-<%= session.role %>"><%= session.role %></span></span>
     <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
       <button type="submit" class="linkbtn">Sign out</button>
     </form>
   <% } %>

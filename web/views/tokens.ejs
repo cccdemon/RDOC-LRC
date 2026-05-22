@@ -1,0 +1,134 @@
+<%- include('_header', { title: 'Tokens', session: session }) %>
+
+<% if (flash && flash.error) { %>
+  <div class="flash flash-error"><%= flash.error %></div>
+<% } %>
+<% if (flash && flash.ok && !flash.newToken) { %>
+  <div class="flash flash-ok"><%= flash.ok %></div>
+<% } %>
+<% if (flash && flash.newToken) { %>
+  <div class="flash flash-token">
+    <h2><%= flash.ok || 'Token created' %></h2>
+    <pre class="token-box" id="new-token"><%= flash.newToken %></pre>
+    <button type="button" class="btn small" id="copy-token-btn">Copy token</button>
+    <% const d = flash.newTokenDetails; %>
+    <p class="muted">
+      Kind: <code><%= d.kind %></code> &middot;
+      Room: <code><%= d.room %></code>
+      <% if (d.kind === 'join') { %> &middot; Guild bind: <code><%= d.guildId || '(any)' %></code><% } %>
+      <% if (d.kind === 'kick') { %> &middot; Target: <code><%= d.targetGuildId %></code><% } %>
+      &middot; Expires: <code><%= new Date(Number(d.expiresAt)).toISOString().slice(0, 19).replace('T', ' ') %> UTC</code>
+    </p>
+    <p class="muted small">This is the only time the full token will be shown. Copy it now and send it out-of-band to the recipient.</p>
+  </div>
+  <script>
+    (function () {
+      var btn = document.getElementById('copy-token-btn');
+      var box = document.getElementById('new-token');
+      if (!btn || !box) return;
+      btn.addEventListener('click', function () {
+        var text = (box.textContent || '').trim();
+        if (!navigator.clipboard) { window.getSelection().selectAllChildren(box); return; }
+        navigator.clipboard.writeText(text).then(function () {
+          var orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(function () { btn.textContent = orig; }, 1800);
+        }).catch(function () {});
+      });
+    })();
+  </script>
+<% } %>
+
+<h1>Tokens</h1>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Create join token</h2>
+    <form method="post" action="/tokens/create-join">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <label>Room
+        <input name="room" required pattern="[a-z0-9][a-z0-9-]{1,30}" placeholder="alliance-chat" autocomplete="off">
+      </label>
+      <label>Bind to guild ID <span class="muted small">(optional)</span>
+        <input name="guildId" pattern="\d{17,20}" placeholder="leave empty for any guild" autocomplete="off">
+      </label>
+      <label>Expires in (hours)
+        <input name="hours" type="number" min="1" max="8760" value="168">
+      </label>
+      <button type="submit" class="btn primary">Create join token</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Create kick token</h2>
+    <form method="post" action="/tokens/create-kick">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <label>Room
+        <input name="room" required pattern="[a-z0-9][a-z0-9-]{1,30}" placeholder="alliance-chat" autocomplete="off">
+      </label>
+      <label>Target server
+        <select name="targetGuildId" required>
+          <option value="">&mdash; pick a federated server &mdash;</option>
+          <% federatedGuilds.sort((a,b) => (a.guildName || '').localeCompare(b.guildName || '')).forEach(function(g) { %>
+            <option value="<%= g.guildId %>"><%= g.guildName || '(unknown)' %> &middot; <%= g.guildId %> &middot; rooms: <%= g.rooms.join(', ') %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>Expires in (hours)
+        <input name="hours" type="number" min="1" max="8760" value="168">
+      </label>
+      <button type="submit" class="btn primary">Create kick token</button>
+    </form>
+    <% if (federatedGuilds.length === 0) { %>
+      <p class="muted small">No federated servers yet &mdash; nothing to kick.</p>
+    <% } %>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Active tokens (<%= tokens.length %>)</h2>
+  <% if (tokens.length === 0) { %>
+    <p class="muted">No active tokens.</p>
+  <% } else { %>
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Prefix</th>
+          <th>Kind</th>
+          <th>Room</th>
+          <th>Binding / target</th>
+          <th>Expires (UTC)</th>
+          <% if (session.role === 'admin') { %><th></th><% } %>
+        </tr>
+      </thead>
+      <tbody>
+      <% tokens.forEach(function(t) { %>
+        <tr>
+          <td><code><%= t.token.slice(0, 13) %>&hellip;</code></td>
+          <td><span class="kind kind-<%= t.kind %>"><%= t.kind %></span></td>
+          <td><code><%= t.room %></code></td>
+          <td>
+            <% if (t.kind === 'join') { %>
+              <code><%= t.guildId || '(any guild)' %></code>
+            <% } else { %>
+              <code><%= t.targetGuildId %></code>
+            <% } %>
+          </td>
+          <td><%= new Date(t.expiresAt).toISOString().slice(0, 16).replace('T', ' ') %></td>
+          <% if (session.role === 'admin') { %>
+            <td>
+              <form method="post" action="/tokens/revoke" class="inline" onsubmit="return confirm('Revoke this token?');">
+                <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+                <input type="hidden" name="prefix" value="<%= t.token.slice(0, 13) %>">
+                <button type="submit" class="btn small danger">Revoke</button>
+              </form>
+            </td>
+          <% } %>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%- include('_footer') %>
