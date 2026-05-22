@@ -52,6 +52,15 @@ function usage() {
     '  admin.js room rules <room>',
     '  admin.js room set-rules <room> [--file=<path>]   (without --file: reads Markdown from stdin)',
     '  admin.js room clear-rules <room>',
+    '  admin.js room mention-mode <room> <off|names-only|resolve-users>',
+    '  admin.js room ban-user <room> <discord-user-id>',
+    '  admin.js room unban-user <room> <discord-user-id>',
+    '  admin.js room banned-users <room>',
+    '  admin.js room badword-mode <room> <off|block|mask>',
+    '  admin.js room badword-add <room> <word-or-phrase>',
+    '  admin.js room badword-remove <room> <word-or-phrase>',
+    '  admin.js room badword-list <room>',
+    '  admin.js room badword-clear <room>',
     '  admin.js state cleanup [--room=<name>]',
     '',
     'Notes:',
@@ -230,6 +239,78 @@ async function cmdRoomClearRules(args) {
   process.stdout.write(`Rules cleared for room "${room}".\n`);
 }
 
+function requireRoomArg(args, usageText) {
+  const room = (args[0] || '').toLowerCase();
+  if (!room) fail(usageText);
+  if (!ROOM_NAME_RE.test(room)) fail('invalid room name');
+  return room;
+}
+
+async function cmdRoomMentionMode(args) {
+  const room = requireRoomArg(args, 'usage: room mention-mode <room> <off|names-only|resolve-users>');
+  const mode = args[1];
+  if (!rooms.MENTION_MODES.includes(mode)) fail('mode must be off, names-only, or resolve-users');
+  await rooms.setMentionMode(room, mode);
+  process.stdout.write(`Mention mode for room "${room}" set to "${mode}".\n`);
+}
+
+async function cmdRoomBanUser(args) {
+  const room = requireRoomArg(args, 'usage: room ban-user <room> <discord-user-id>');
+  const userId = args[1];
+  await rooms.addBannedUser(room, userId);
+  process.stdout.write(`User ${userId} banned from relaying in room "${room}".\n`);
+}
+
+async function cmdRoomUnbanUser(args) {
+  const room = requireRoomArg(args, 'usage: room unban-user <room> <discord-user-id>');
+  const userId = args[1];
+  await rooms.removeBannedUser(room, userId);
+  process.stdout.write(`User ${userId} unbanned in room "${room}".\n`);
+}
+
+async function cmdRoomBannedUsers(args) {
+  const room = requireRoomArg(args, 'usage: room banned-users <room>');
+  const ids = await rooms.getBannedUsers(room);
+  if (ids.length === 0) { process.stdout.write(`No banned users in room "${room}".\n`); return; }
+  for (const id of ids) process.stdout.write(`${id}\n`);
+}
+
+async function cmdRoomBadwordMode(args) {
+  const room = requireRoomArg(args, 'usage: room badword-mode <room> <off|block|mask>');
+  const mode = args[1];
+  if (!rooms.BADWORD_MODES.includes(mode)) fail('mode must be off, block, or mask');
+  await rooms.setBadwordMode(room, mode);
+  process.stdout.write(`Bad-word mode for room "${room}" set to "${mode}".\n`);
+}
+
+async function cmdRoomBadwordAdd(args) {
+  const room = requireRoomArg(args, 'usage: room badword-add <room> <word-or-phrase>');
+  const word = args.slice(1).join(' ').trim();
+  await rooms.addBadword(room, word);
+  process.stdout.write(`Bad-word entry added to room "${room}".\n`);
+}
+
+async function cmdRoomBadwordRemove(args) {
+  const room = requireRoomArg(args, 'usage: room badword-remove <room> <word-or-phrase>');
+  const word = args.slice(1).join(' ').trim();
+  await rooms.removeBadword(room, word);
+  process.stdout.write(`Bad-word entry removed from room "${room}".\n`);
+}
+
+async function cmdRoomBadwordList(args) {
+  const room = requireRoomArg(args, 'usage: room badword-list <room>');
+  const config = await rooms.getBadwordConfig(room);
+  process.stdout.write(`Mode: ${config.mode}\n`);
+  if (config.words.length === 0) { process.stdout.write('No bad-word entries.\n'); return; }
+  for (const word of config.words) process.stdout.write(`${word}\n`);
+}
+
+async function cmdRoomBadwordClear(args) {
+  const room = requireRoomArg(args, 'usage: room badword-clear <room>');
+  await rooms.clearBadwords(room);
+  process.stdout.write(`Bad-word list cleared for room "${room}".\n`);
+}
+
 async function cmdStateCleanup(args, flags) {
   const roomFilter = flags.room ? String(flags.room).toLowerCase() : null;
   if (roomFilter && !ROOM_NAME_RE.test(roomFilter)) fail('invalid --room value');
@@ -273,6 +354,15 @@ const ROUTES = {
   'room rules':        cmdRoomRules,
   'room set-rules':    cmdRoomSetRules,
   'room clear-rules':  cmdRoomClearRules,
+  'room mention-mode': cmdRoomMentionMode,
+  'room ban-user':     cmdRoomBanUser,
+  'room unban-user':   cmdRoomUnbanUser,
+  'room banned-users': cmdRoomBannedUsers,
+  'room badword-mode': cmdRoomBadwordMode,
+  'room badword-add':  cmdRoomBadwordAdd,
+  'room badword-remove': cmdRoomBadwordRemove,
+  'room badword-list': cmdRoomBadwordList,
+  'room badword-clear': cmdRoomBadwordClear,
   'state cleanup':     cmdStateCleanup,
 };
 

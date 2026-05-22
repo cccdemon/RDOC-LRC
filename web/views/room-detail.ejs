@@ -73,6 +73,107 @@
 
 <% if (session.role === 'admin') { %>
   <div class="card">
+    <h2>Mentions</h2>
+    <p class="muted">Controls how Discord user mentions are relayed across servers. Mass mentions and role mentions stay disabled.</p>
+    <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/mention-mode">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <label>Mode
+        <select name="mode">
+          <option value="off" <%= mentionMode === 'off' ? 'selected' : '' %>>Off (plain names)</option>
+          <option value="names-only" <%= mentionMode === 'names-only' ? 'selected' : '' %>>Names only</option>
+          <option value="resolve-users" <%= mentionMode === 'resolve-users' ? 'selected' : '' %>>Resolve users when possible</option>
+        </select>
+      </label>
+      <button type="submit" class="btn primary">Update mentions</button>
+    </form>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2>Banned users</h2>
+      <% if (bannedUsers.length === 0) { %>
+        <p class="muted">No users banned in this room.</p>
+      <% } else { %>
+        <table class="data">
+          <thead><tr><th>User ID</th><th class="actions-col">Actions</th></tr></thead>
+          <tbody>
+            <% bannedUsers.forEach(function(userId) { %>
+              <tr>
+                <td><code><%= userId %></code></td>
+                <td class="actions">
+                  <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/bans/remove" class="inline">
+                    <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+                    <input type="hidden" name="userId" value="<%= userId %>">
+                    <button type="submit" class="btn small danger">Unban</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+      <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/bans/add">
+        <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+        <label>Discord user ID
+          <input type="text" name="userId" placeholder="123456789012345678">
+        </label>
+        <button type="submit" class="btn primary">Ban user</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Bad-word filter</h2>
+      <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/badwords/mode">
+        <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+        <label>Mode
+          <select name="mode">
+            <option value="off" <%= badwordConfig.mode === 'off' ? 'selected' : '' %>>Off</option>
+            <option value="block" <%= badwordConfig.mode === 'block' ? 'selected' : '' %>>Block messages</option>
+            <option value="mask" <%= badwordConfig.mode === 'mask' ? 'selected' : '' %>>Mask matches</option>
+          </select>
+        </label>
+        <button type="submit" class="btn primary">Update filter</button>
+      </form>
+      <% if (badwordConfig.words.length === 0) { %>
+        <p class="muted">No words or phrases configured.</p>
+      <% } else { %>
+        <table class="data">
+          <thead><tr><th>Word / phrase</th><th class="actions-col">Actions</th></tr></thead>
+          <tbody>
+            <% badwordConfig.words.forEach(function(word) { %>
+              <tr>
+                <td><code><%= word %></code></td>
+                <td class="actions">
+                  <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/badwords/remove" class="inline">
+                    <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+                    <input type="hidden" name="word" value="<%= word %>">
+                    <button type="submit" class="btn small danger">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+      <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/badwords/add">
+        <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+        <label>Word or phrase
+          <input type="text" name="word" placeholder="blocked phrase">
+        </label>
+        <button type="submit" class="btn primary">Add entry</button>
+        <% if (badwordConfig.words.length > 0) { %>
+          <button type="submit" form="badwords-clear-form" class="btn danger">Clear list</button>
+        <% } %>
+      </form>
+      <% if (badwordConfig.words.length > 0) { %>
+        <form id="badwords-clear-form" method="post" action="/rooms/<%= encodeURIComponent(room) %>/badwords/clear" class="inline" onsubmit="return confirm('Clear bad-word list for room <%= room %>?');">
+          <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+        </form>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Weblink filter</h2>
     <p class="muted">Per-room URL allowlist. Affects every server in the federation.</p>
     <p><a class="btn small" href="/rooms/<%= encodeURIComponent(room) %>/weblink">Manage weblink filter &rarr;</a></p>

@@ -83,8 +83,91 @@ const commands = [
       .setDescription('Show current weblink filtering configuration for this room federation'))
     .addSubcommand(sub => sub
       .setName('weblink-clear')
-      .setDescription('Clear all domains from the weblink filter list for this room federation')),
+      .setDescription('Clear all domains from the weblink filter list for this room federation'))
+    .addSubcommand(sub => sub
+      .setName('mention-mode')
+      .setDescription('Set how user mentions are relayed for this room federation')
+      .addStringOption(o => o.setName('mode')
+        .setDescription('Mention mode')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Off (strip to plain names)', value: 'off' },
+          { name: 'Names only (safe default)', value: 'names-only' },
+          { name: 'Resolve users when possible', value: 'resolve-users' }
+        )))
+    .addSubcommand(sub => sub
+      .setName('ban-user')
+      .setDescription('Ban a Discord user from relaying messages in this room')
+      .addStringOption(o => o.setName('user-id')
+        .setDescription('Discord user ID')
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('unban-user')
+      .setDescription('Remove a room relay ban for a Discord user')
+      .addStringOption(o => o.setName('user-id')
+        .setDescription('Discord user ID')
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('banned-users')
+      .setDescription('List Discord users banned from relaying in this room'))
+    .addSubcommand(sub => sub
+      .setName('badword-mode')
+      .setDescription('Set bad-word filter mode for this room federation')
+      .addStringOption(o => o.setName('mode')
+        .setDescription('Bad-word mode')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Off', value: 'off' },
+          { name: 'Block matching messages', value: 'block' },
+          { name: 'Mask matches with ***', value: 'mask' }
+        )))
+    .addSubcommand(sub => sub
+      .setName('badword-add')
+      .setDescription('Add a word or phrase to the room bad-word filter')
+      .addStringOption(o => o.setName('word')
+        .setDescription('Word or phrase to match')
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('badword-remove')
+      .setDescription('Remove a word or phrase from the room bad-word filter')
+      .addStringOption(o => o.setName('word')
+        .setDescription('Word or phrase to remove')
+        .setRequired(true)))
+    .addSubcommand(sub => sub
+      .setName('badword-list')
+      .setDescription('Show bad-word filter configuration for this room'))
+    .addSubcommand(sub => sub
+      .setName('badword-clear')
+      .setDescription('Clear the room bad-word filter list')),
 ];
+
+const OPERATOR_SUBCOMMANDS = new Set([
+  'weblink-mode',
+  'weblink-add',
+  'weblink-remove',
+  'weblink-list',
+  'weblink-clear',
+  'mention-mode',
+  'ban-user',
+  'unban-user',
+  'banned-users',
+  'badword-mode',
+  'badword-add',
+  'badword-remove',
+  'badword-list',
+  'badword-clear',
+]);
+
+function operatorUserIds() {
+  return [
+    process.env.RDOC_BOOTSTRAP_ADMIN_ID || '',
+    ...(process.env.RDOC_OPERATOR_USER_IDS || '').split(','),
+  ].map(id => id.trim()).filter(Boolean);
+}
+
+function isOperatorUser(userId) {
+  return operatorUserIds().includes(String(userId || ''));
+}
 
 async function handleInteraction(interaction) {
   if (interaction.isAutocomplete?.() && interaction.commandName === 'bridge') {
@@ -94,6 +177,11 @@ async function handleInteraction(interaction) {
   if (interaction.commandName !== 'bridge') return;
 
   const sub = interaction.options.getSubcommand();
+  if (OPERATOR_SUBCOMMANDS.has(sub) && !isOperatorUser(interaction.user.id)) {
+    log('Security', `blocked operator-only /bridge ${sub} by user=${interaction.user.id} guild=${interaction.guildId}`);
+    return reply(interaction, 'This room-wide moderation setting is operator-only. Ask an RDOC-LRC admin to change it in the web UI or CLI.');
+  }
+
   switch (sub) {
     case 'join':           return handleJoin(interaction);
     case 'leave':          return handleLeave(interaction);
@@ -107,6 +195,15 @@ async function handleInteraction(interaction) {
     case 'weblink-remove': return handleWeblinkRemove(interaction);
     case 'weblink-list':   return handleWeblinkList(interaction);
     case 'weblink-clear':  return handleWeblinkClear(interaction);
+    case 'mention-mode':   return handleMentionMode(interaction);
+    case 'ban-user':       return handleBanUser(interaction);
+    case 'unban-user':     return handleUnbanUser(interaction);
+    case 'banned-users':   return handleBannedUsers(interaction);
+    case 'badword-mode':   return handleBadwordMode(interaction);
+    case 'badword-add':    return handleBadwordAdd(interaction);
+    case 'badword-remove': return handleBadwordRemove(interaction);
+    case 'badword-list':   return handleBadwordList(interaction);
+    case 'badword-clear':  return handleBadwordClear(interaction);
     default:               return reply(interaction, `Unknown subcommand: ${sub}`);
   }
 }
@@ -497,6 +594,122 @@ async function handleWeblinkClear(interaction) {
   } catch (e) {
     return reply(interaction, `Error: ${e.message}`);
   }
+}
+
+function currentRoomEntry(interaction) {
+  const channel = interaction.channel;
+  if (!channel) return { error: 'Unable to determine channel information. Channel is null/undefined.' };
+  if (!channel.isTextBased() || channel.isThread()) {
+    return { error: `This command only works in text-based channels (not threads). Channel type: ${channel.type}, Text-based: ${channel.isTextBased()}, Thread: ${channel.isThread()}` };
+  }
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return { error: 'This channel is not linked to any bridge room.' };
+  return { channel, entry };
+}
+
+async function handleMentionMode(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const mode = interaction.options.getString('mode', true);
+  try {
+    await rooms.setMentionMode(entry.room, mode);
+    return reply(interaction, `Mention mode for room "${entry.room}" set to "${mode}".`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleBanUser(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const userId = interaction.options.getString('user-id', true).trim();
+  try {
+    await rooms.addBannedUser(entry.room, userId);
+    log('Moderation', `ban-user room=${entry.room} user=${userId} by=${interaction.user.id}`);
+    return reply(interaction, `User \`${userId}\` is now banned from relaying in room "${entry.room}".`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleUnbanUser(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const userId = interaction.options.getString('user-id', true).trim();
+  try {
+    await rooms.removeBannedUser(entry.room, userId);
+    log('Moderation', `unban-user room=${entry.room} user=${userId} by=${interaction.user.id}`);
+    return reply(interaction, `User \`${userId}\` is no longer banned from relaying in room "${entry.room}".`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleBannedUsers(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const ids = await rooms.getBannedUsers(entry.room);
+  if (ids.length === 0) return reply(interaction, `No users are banned in room "${entry.room}".`);
+  return reply(interaction, `Banned users in "${entry.room}":\n` + ids.map(id => `- \`${id}\``).join('\n'));
+}
+
+async function handleBadwordMode(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const mode = interaction.options.getString('mode', true);
+  try {
+    await rooms.setBadwordMode(entry.room, mode);
+    return reply(interaction, `Bad-word filter mode for room "${entry.room}" set to "${mode}".`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleBadwordAdd(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const word = interaction.options.getString('word', true);
+  try {
+    await rooms.addBadword(entry.room, word);
+    log('Moderation', `badword-add room=${entry.room} by=${interaction.user.id}`);
+    return reply(interaction, `Added bad-word filter entry to room "${entry.room}".`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleBadwordRemove(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const word = interaction.options.getString('word', true);
+  try {
+    await rooms.removeBadword(entry.room, word);
+    log('Moderation', `badword-remove room=${entry.room} by=${interaction.user.id}`);
+    return reply(interaction, `Removed bad-word filter entry from room "${entry.room}".`);
+  } catch (e) {
+    return reply(interaction, `Error: ${e.message}`);
+  }
+}
+
+async function handleBadwordList(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  const config = await rooms.getBadwordConfig(entry.room);
+  const lines = [`Bad-word filter for "${entry.room}": mode=${config.mode}`];
+  if (config.words.length > 0) {
+    lines.push('', ...config.words.map(w => `- \`${w}\``));
+  } else {
+    lines.push('', '(no words configured)');
+  }
+  return reply(interaction, lines.join('\n'));
+}
+
+async function handleBadwordClear(interaction) {
+  const { entry, error } = currentRoomEntry(interaction);
+  if (error) return reply(interaction, error);
+  await rooms.clearBadwords(entry.room);
+  log('Moderation', `badword-clear room=${entry.room} by=${interaction.user.id}`);
+  return reply(interaction, `Cleared bad-word filter list for room "${entry.room}".`);
 }
 
 function reply(interaction, content) {

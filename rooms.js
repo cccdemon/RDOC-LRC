@@ -13,8 +13,14 @@ const kRoomMembers = (room) => `rdoc:room:${room}:members`;
 const kChannel = (channelId) => `rdoc:channel:${channelId}`;
 const kGuildAuditChannel = (guildId) => `rdoc:guild:${guildId}:audit_channel`;
 const kRoomRules = (room) => `rdoc:room:${room}:rules`;
+const kRoomBannedUsers = (room) => `rdoc:room:${room}:banned_users`;
+const kRoomBadwords = (room) => `rdoc:room:${room}:badwords`;
+const kRoomBadwordMode = (room) => `rdoc:room:${room}:badword_mode`;
+const kRoomMentionMode = (room) => `rdoc:room:${room}:mention_mode`;
 
 const ROOM_RULES_MAX = 1900;
+const BADWORD_MODES = ['off', 'block', 'mask'];
+const MENTION_MODES = ['off', 'names-only', 'resolve-users'];
 
 async function initRooms(redisClient) {
   redis = redisClient;
@@ -172,6 +178,87 @@ async function setRoomRules(room, rules) {
   await redis.set(kRoomRules(room), text);
 }
 
+async function addBannedUser(room, userId) {
+  const id = String(userId || '').trim();
+  if (!/^\d{17,20}$/.test(id)) throw new Error('Invalid Discord user ID');
+  await redis.sadd(kRoomBannedUsers(room), id);
+}
+
+async function removeBannedUser(room, userId) {
+  const id = String(userId || '').trim();
+  if (!id) throw new Error('Missing Discord user ID');
+  await redis.srem(kRoomBannedUsers(room), id);
+}
+
+async function getBannedUsers(room) {
+  return (await redis.smembers(kRoomBannedUsers(room))).sort();
+}
+
+async function isUserBanned(room, userId) {
+  return (await redis.sismember(kRoomBannedUsers(room), String(userId))) === 1;
+}
+
+async function setBadwordMode(room, mode) {
+  if (!BADWORD_MODES.includes(mode)) throw new Error('Invalid bad-word mode');
+  if (mode === 'off') await redis.del(kRoomBadwordMode(room));
+  else await redis.set(kRoomBadwordMode(room), mode);
+}
+
+async function getBadwordMode(room) {
+  const mode = await redis.get(kRoomBadwordMode(room));
+  return BADWORD_MODES.includes(mode) ? mode : 'off';
+}
+
+function normalizeModerationText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeBadword(word) {
+  return normalizeModerationText(word);
+}
+
+async function addBadword(room, word) {
+  const normalized = normalizeBadword(word);
+  if (!normalized) throw new Error('Bad word cannot be empty');
+  if (normalized.length > 120) throw new Error('Bad word too long');
+  await redis.sadd(kRoomBadwords(room), normalized);
+}
+
+async function removeBadword(room, word) {
+  const normalized = normalizeBadword(word);
+  if (!normalized) throw new Error('Bad word cannot be empty');
+  await redis.srem(kRoomBadwords(room), normalized);
+}
+
+async function getBadwords(room) {
+  return (await redis.smembers(kRoomBadwords(room))).sort();
+}
+
+async function clearBadwords(room) {
+  await redis.del(kRoomBadwords(room));
+}
+
+async function getBadwordConfig(room) {
+  const [mode, words] = await Promise.all([getBadwordMode(room), getBadwords(room)]);
+  return { mode, words };
+}
+
+async function setMentionMode(room, mode) {
+  if (!MENTION_MODES.includes(mode)) throw new Error('Invalid mention mode');
+  if (mode === 'names-only') await redis.del(kRoomMentionMode(room));
+  else await redis.set(kRoomMentionMode(room), mode);
+}
+
+async function getMentionMode(room) {
+  const mode = await redis.get(kRoomMentionMode(room));
+  return MENTION_MODES.includes(mode) ? mode : 'names-only';
+}
+
 async function setGuildAuditChannel(guildId, channelId) {
   if (channelId) await redis.set(kGuildAuditChannel(guildId), String(channelId));
   else           await redis.del(kGuildAuditChannel(guildId));
@@ -242,6 +329,9 @@ module.exports = {
   pruneStale,
   setGuildAuditChannel, getGuildAuditChannel,
   getRoomRules, setRoomRules, ROOM_RULES_MAX,
+  addBannedUser, removeBannedUser, getBannedUsers, isUserBanned,
+  setBadwordMode, getBadwordMode, addBadword, removeBadword, getBadwords, clearBadwords, getBadwordConfig,
+  setMentionMode, getMentionMode, BADWORD_MODES, MENTION_MODES,
   setWeblinkMode, getWeblinkMode,
   addToWeblinkList, removeFromWeblinkList, getWeblinkList, clearWeblinkList,
   getWeblinkConfig,

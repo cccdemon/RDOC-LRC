@@ -121,4 +121,20 @@ async function weblinkBlocked({ room, guildId, channelId, userId, reason, blocke
   });
 }
 
-module.exports = { init, tokenConsumed, channelLeft, webhookError, serverKicked, weblinkBlocked, COLORS };
+async function moderationBlocked({ room, guildId, channelId, userId, reason, matched, messageContent }) {
+  await dispatch({
+    recipients: [guildId],
+    title: 'Bridge: message blocked by moderation',
+    color: COLORS.warning,
+    fields: [
+      { name: 'Room',    value: `\`${room}\``, inline: true },
+      { name: 'Channel', value: `<#${channelId}>`, inline: true },
+      { name: 'User',    value: `<@${userId}>`, inline: true },
+      { name: 'Reason',  value: reason || 'unknown', inline: true },
+      { name: 'Matched', value: matched ? `\`${String(matched).slice(0, 80)}\`` : '(none)', inline: true },
+      { name: 'Message', value: (messageContent || '').slice(0, 500), inline: false },
+    ],
+  });
+}
+
+module.exports = { init, tokenConsumed, channelLeft, webhookError, serverKicked, weblinkBlocked, moderationBlocked, COLORS };

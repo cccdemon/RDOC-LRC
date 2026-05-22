@@ -14,6 +14,90 @@ let client = null;
 let ready = false;
 let sweepTimer = null;
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeModerationText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function badwordMaskPattern(word) {
+  const parts = [...String(word || '')].map(ch => /\s/u.test(ch) ? '\\s+' : escapeRegExp(ch));
+  return new RegExp(parts.join('[\\u200B-\\u200D\\uFEFF\\u2060]*'), 'giu');
+}
+
+function applyBadwordPolicy(content, config) {
+  const text = String(content || '');
+  if (!text || !config || config.mode === 'off' || !config.words || config.words.length === 0) {
+    return { allowed: true, content: text };
+  }
+
+  const normalizedText = normalizeModerationText(text);
+  let masked = text;
+  for (const word of config.words) {
+    const normalized = normalizeModerationText(word);
+    if (!normalized) continue;
+    if (normalizedText.includes(normalized)) {
+      if (config.mode === 'block') {
+        return { allowed: false, matched: normalized, content: text };
+      }
+      const before = masked;
+      masked = masked.replace(badwordMaskPattern(normalized), '***');
+      if (masked === before) {
+        return { allowed: false, matched: normalized, content: text };
+      }
+    }
+  }
+  return { allowed: true, content: masked };
+}
+
+function mentionDisplayName(message, userId) {
+  const member = message.mentions?.members?.get(userId);
+  const user = message.mentions?.users?.get(userId);
+  return member?.displayName || user?.globalName || user?.username || userId;
+}
+
+async function rewriteMentionsForTarget(content, message, target, mode) {
+  const text = String(content || '');
+  if (!text || !message.mentions?.users?.size) {
+    return { content: text, allowedUsers: [] };
+  }
+
+  const allowedUsers = [];
+  let output = text;
+  const mentionIds = [...message.mentions.users.keys()];
+  for (const userId of mentionIds) {
+    const fallback = `@${mentionDisplayName(message, userId)}`;
+    let replacement = fallback;
+    if (mode === 'off') {
+      replacement = mentionDisplayName(message, userId);
+    } else if (mode === 'resolve-users') {
+      const guild = client?.guilds?.cache?.get(target.guildId);
+      if (guild) {
+        const cached = guild.members?.cache?.has(userId);
+        let exists = cached;
+        if (!exists) {
+          exists = Boolean(await guild.members.fetch(userId).catch(() => null));
+        }
+        if (exists) {
+          replacement = `<@${userId}>`;
+          allowedUsers.push(userId);
+        }
+      }
+    }
+    output = output
+      .replace(new RegExp(`<@!?${escapeRegExp(userId)}>`, 'g'), replacement)
+      .replace(new RegExp(`<@${escapeRegExp(userId)}>`, 'g'), replacement);
+  }
+  return { content: output, allowedUsers };
+}
+
 async function startBot({ token, appId }) {
   client = new Client({
     intents: [
@@ -49,6 +133,20 @@ async function onMessage(message) {
 
   const entry = rooms.getChannel(message.channelId);
   if (!entry) return;
+
+  if (await rooms.isUserBanned(entry.room, message.author.id)) {
+    log('Moderation', `blocked banned user room=${entry.room} user=${message.author.id}`);
+    audit.moderationBlocked({
+      room: entry.room,
+      guildId: message.guild.id,
+      channelId: message.channelId,
+      userId: message.author.id,
+      reason: 'banned-user',
+      matched: message.author.id,
+      messageContent: message.content,
+    }).catch(e => logErr('Audit', e.message));
+    return;
+  }
 
   const targets = rooms.getRoomMembers(entry.room).filter(m => m.channelId !== message.channelId);
   if (targets.length === 0) return;
@@ -101,6 +199,22 @@ async function onMessage(message) {
     }
   }
 
+  const badwordConfig = await rooms.getBadwordConfig(entry.room);
+  const badwordCheck = applyBadwordPolicy(message.content, badwordConfig);
+  if (!badwordCheck.allowed) {
+    log('Moderation', `bad-word blocked room=${entry.room} user=${message.author.id} match="${badwordCheck.matched}"`);
+    audit.moderationBlocked({
+      room: entry.room,
+      guildId: message.guild.id,
+      channelId: message.channelId,
+      userId: message.author.id,
+      reason: 'bad-word',
+      matched: badwordCheck.matched,
+      messageContent: message.content,
+    }).catch(e => logErr('Audit', e.message));
+    return;
+  }
+
   const displayName = message.member?.displayName || message.author.username;
   const avatarURL =
     (typeof message.member?.displayAvatarURL === 'function' ? message.member.displayAvatarURL() : null) ||
@@ -110,26 +224,37 @@ async function onMessage(message) {
     ? [...message.attachments.values()].map(a => a.url)
     : undefined;
 
-  const payload = {
+  const basePayload = {
     username: `From ${message.guild.name} / ${displayName}`.slice(0, 80),
     avatarURL,
-    content: message.content || undefined,
+    content: badwordCheck.content || undefined,
     files,
     allowedMentions: { parse: [] },
   };
 
-  if (!payload.content && !payload.files) return;
+  if (!basePayload.content && !basePayload.files) return;
 
   const t0 = Date.now();
-  await Promise.all(targets.map(t => sendToTarget(t, payload).catch(e => {
-    logErr('Relay', `-> ${t.guildId}/${t.channelId}: ${e.message}`);
-    audit.webhookError({
-      sourceGuildId: message.guild.id,
-      room: entry.room,
-      targetChannelId: t.channelId,
-      errorMessage: e.message,
-    }).catch(err => logErr('Audit', err.message));
-  })));
+  const mentionMode = await rooms.getMentionMode(entry.room);
+  await Promise.all(targets.map(async t => {
+    try {
+      const payload = { ...basePayload };
+      const rewritten = await rewriteMentionsForTarget(payload.content, message, t, mentionMode);
+      payload.content = rewritten.content || undefined;
+      payload.allowedMentions = rewritten.allowedUsers.length > 0
+        ? { parse: [], users: rewritten.allowedUsers }
+        : { parse: [] };
+      await sendToTarget(t, payload);
+    } catch (e) {
+      logErr('Relay', `-> ${t.guildId}/${t.channelId}: ${e.message}`);
+      audit.webhookError({
+        sourceGuildId: message.guild.id,
+        room: entry.room,
+        targetChannelId: t.channelId,
+        errorMessage: e.message,
+      }).catch(err => logErr('Audit', err.message));
+    }
+  }));
   log('Relay', `[${entry.room}] ${displayName}@${message.guild.name} -> ${targets.length} target(s) (${Date.now() - t0}ms)`);
 }
 

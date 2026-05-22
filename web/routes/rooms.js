@@ -10,6 +10,7 @@ const { log } = require('../../log');
 const ROOM_NAME_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 const DOMAIN_RE = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
 const WEBLINK_MODES = ['none', 'allowlist'];
+const USER_ID_RE = /^\d{17,20}$/;
 
 const router = express.Router();
 router.use(requireAuth);
@@ -55,15 +56,23 @@ router.get('/:room', async (req, res, next) => {
       (a.guildName || '').localeCompare(b.guildName || '') ||
       (a.channelName || '').localeCompare(b.channelName || '')
     );
-    const rules = (await rooms.getRoomRules(roomName)) || '';
+    const [rules, bannedUsers, badwordConfig, mentionMode] = await Promise.all([
+      rooms.getRoomRules(roomName),
+      rooms.getBannedUsers(roomName),
+      rooms.getBadwordConfig(roomName),
+      rooms.getMentionMode(roomName),
+    ]);
     const flash = await req.consumeFlash();
     res.render('room-detail', {
       title: `Room: ${roomName}`,
       session: req.session,
       room: roomName,
       members: sorted,
-      rules,
+      rules: rules || '',
       rulesMax: rooms.ROOM_RULES_MAX,
+      bannedUsers,
+      badwordConfig,
+      mentionMode,
       flash,
     });
   } catch (e) { next(e); }
@@ -249,6 +258,113 @@ router.post('/:room/rules/clear', requireRole('admin'), requireCsrf, async (req,
       details: { room: roomName },
     });
     await res.flash({ ok: `Rules cleared for "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/mention-mode', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const mode = String(req.body.mode || '').trim();
+    if (!rooms.MENTION_MODES.includes(mode)) {
+      await res.flash({ error: 'Invalid mention mode.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.setMentionMode(roomName, mode);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.mention-mode', details: { room: roomName, mode } });
+    await res.flash({ ok: `Mention mode for "${roomName}" set to "${mode}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/bans/add', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const userId = String(req.body.userId || '').trim();
+    if (!USER_ID_RE.test(userId)) {
+      await res.flash({ error: 'Invalid Discord user ID.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.addBannedUser(roomName, userId);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.ban-user', details: { room: roomName, bannedUserId: userId } });
+    await res.flash({ ok: `User ${userId} banned from relaying in "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/bans/remove', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const userId = String(req.body.userId || '').trim();
+    if (!userId) {
+      await res.flash({ error: 'Missing Discord user ID.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.removeBannedUser(roomName, userId);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.unban-user', details: { room: roomName, bannedUserId: userId } });
+    await res.flash({ ok: `User ${userId} unbanned in "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/badwords/mode', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const mode = String(req.body.mode || '').trim();
+    if (!rooms.BADWORD_MODES.includes(mode)) {
+      await res.flash({ error: 'Invalid bad-word mode.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.setBadwordMode(roomName, mode);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.badword-mode', details: { room: roomName, mode } });
+    await res.flash({ ok: `Bad-word mode for "${roomName}" set to "${mode}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/badwords/add', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const word = String(req.body.word || '').trim();
+    if (!word) {
+      await res.flash({ error: 'Bad-word entry cannot be empty.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.addBadword(roomName, word);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.badword-add', details: { room: roomName } });
+    await res.flash({ ok: `Bad-word entry added to "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/badwords/remove', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    const word = String(req.body.word || '').trim();
+    if (!word) {
+      await res.flash({ error: 'Missing bad-word entry.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    await rooms.removeBadword(roomName, word);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.badword-remove', details: { room: roomName } });
+    await res.flash({ ok: `Bad-word entry removed from "${roomName}".` });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
+router.post('/:room/badwords/clear', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  try {
+    const roomName = await ensureValidRoom(req, res);
+    if (!roomName) return;
+    await rooms.clearBadwords(roomName);
+    audit.append({ userId: req.session.userId, username: req.session.username, action: 'moderation.badword-clear', details: { room: roomName } });
+    await res.flash({ ok: `Bad-word list cleared for "${roomName}".` });
     res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
   } catch (e) { next(e); }
 });

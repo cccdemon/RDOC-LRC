@@ -50,7 +50,7 @@ function mountWeb(app, redis) {
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
 
-  app.use('/static', express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
+  app.use('/static', express.static(path.join(__dirname, 'public'), { maxAge: 0 }));
   app.use(express.urlencoded({ extended: false }));
   app.use(session.sessionMiddleware(redis));
 

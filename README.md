@@ -98,7 +98,7 @@ docker exec rdoc-lc-bot node bin/admin.js <subcommand>
 | `/bridge audit-channel [channel]` | Set or clear (omit `channel`) this server's audit log channel. |
 | `/bridge kick <token>` | Remove a server from a bridge room. Token (issued by the operator) specifies which room and which guild to remove. |
 
-All require **Manage Channels**. Room-name rule: `^[a-z0-9][a-z0-9-]{1,30}$`.
+All require **Manage Channels**. Room-wide filtering/moderation slash commands additionally require `RDOC_BOOTSTRAP_ADMIN_ID` or `RDOC_OPERATOR_USER_IDS`. Room-name rule: `^[a-z0-9][a-z0-9-]{1,30}$`.
 
 ## Audit events
 
@@ -129,6 +129,7 @@ Audit failures (channel deleted, missing permissions) are silently dropped — n
 | `WEB_PUBLIC_URL` | web UI | – | Public origin, e.g. `https://relay.raumdock.org`. The OAuth redirect URI registered in the Discord portal must be `<WEB_PUBLIC_URL>/auth/callback`. |
 | `WEB_SESSION_SECRET` | no | – | Reserved for future signed-cookie use; not currently consumed. |
 | `RDOC_BOOTSTRAP_ADMIN_ID` | web UI | – | Discord user ID granted admin on every startup (recovery hatch). |
+| `RDOC_OPERATOR_USER_IDS` | no | – | Comma-separated Discord user IDs allowed to change room-wide moderation/filter settings via slash commands. `RDOC_BOOTSTRAP_ADMIN_ID` is also treated as an operator. |
 
 If any of the three `DISCORD_OAUTH_*` / `WEB_PUBLIC_URL` vars are unset, the web UI stays disabled and the bot starts up unchanged.
 
