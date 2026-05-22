@@ -1,0 +1,9 @@
+{$RDOC_LRC_DOMAIN} {
+  encode zstd gzip
+
+  tls {
+    dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+  }
+
+  reverse_proxy bot:3007
+}

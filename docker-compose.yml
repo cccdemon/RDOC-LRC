@@ -50,8 +50,35 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  caddy:
+    build:
+      context: ./caddy
+    container_name: rdoc-lrc-caddy
+    restart: unless-stopped
+    environment:
+      RDOC_LRC_DOMAIN: ${RDOC_LRC_DOMAIN}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+    depends_on:
+      bot:
+        condition: service_healthy
+    networks: [rdoc-lc]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
 volumes:
   redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 networks:
