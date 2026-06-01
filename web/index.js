@@ -136,7 +136,7 @@ function mountWeb(app, redis) {
       const allTokens = await tokensModule.list();
       const botStatus = bot.getBotStatus();
       const inviteUrl = cfg.appId
-        ? `https://discord.com/oauth2/authorize?client_id=${cfg.appId}&permissions=1065689107520&integration_type=0&scope=bot`
+        ? `https://discord.com/oauth2/authorize?client_id=${cfg.appId}&permissions=1065689115712&integration_type=0&scope=bot`
         : null;
       res.render('dashboard', {
         title: 'Dashboard',
