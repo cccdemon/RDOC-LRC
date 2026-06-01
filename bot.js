@@ -98,6 +98,37 @@ async function rewriteMentionsForTarget(content, message, target, mode) {
   return { content: output, allowedUsers };
 }
 
+async function onWebhooksUpdate(channel) {
+  const entry = rooms.getChannel(channel.id);
+  if (!entry) return;
+
+  let webhooks;
+  try {
+    webhooks = await channel.fetchWebhooks();
+  } catch (e) {
+    logErr('Webhook', `fetchWebhooks failed channel=${channel.id}: ${e.message}`);
+    return;
+  }
+
+  if (webhooks.has(entry.webhookId)) return;
+
+  log('Webhook', `Webhook gone for room=${entry.room} channel=${channel.id} (#${channel.name}) — recreating`);
+
+  let newWebhook;
+  try {
+    newWebhook = await channel.createWebhook({
+      name: 'RDOC-LC Relay',
+      reason: 'Restoring RDOC-LC relay webhook after deletion',
+    });
+  } catch (e) {
+    logErr('Webhook', `recreate failed room=${entry.room} channel=${channel.id}: ${e.message}`);
+    return;
+  }
+
+  await rooms.updateWebhook(channel.id, newWebhook.url, newWebhook.id);
+  log('Webhook', `Webhook restored room=${entry.room} channel=${channel.id}`);
+}
+
 async function startBot({ token, appId }) {
   client = new Client({
     intents: [
@@ -119,6 +150,7 @@ async function startBot({ token, appId }) {
 
   client.on('messageCreate', (m) => onMessage(m).catch(e => logErr('Relay', e.message)));
   client.on('interactionCreate', (i) => handleInteraction(i).catch(e => logErr('Interaction', e.message)));
+  client.on('webhooksUpdate', (ch) => onWebhooksUpdate(ch).catch(e => logErr('Webhook', e.message)));
   client.on('error', (e) => logErr('Discord', e.message));
   client.on('shardError', (e) => logErr('Shard', e.message));
 
@@ -246,7 +278,11 @@ async function onMessage(message) {
         : { parse: [] };
       await sendToTarget(t, payload);
     } catch (e) {
-      logErr('Relay', `-> ${t.guildId}/${t.channelId}: ${e.message}`);
+      if (e?.code === 10015) {
+        logErr('Relay', `Unknown Webhook (10015) room=${entry.room} channel=${t.channelId} — webhook was deleted or channel renamed; webhooksUpdate should auto-recover`);
+      } else {
+        logErr('Relay', `-> ${t.guildId}/${t.channelId}: ${e.message}`);
+      }
       audit.webhookError({
         sourceGuildId: message.guild.id,
         room: entry.room,

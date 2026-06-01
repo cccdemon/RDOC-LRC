@@ -15,6 +15,25 @@
     <% } %>
   </div>
 <% } %>
+<% if (flash && flash.checkDetails) { %>
+  <%
+    var checkOk = flash.checkDetails.filter(function(d){ return d.ok; }).length;
+    var checkTotal = flash.checkDetails.length;
+  %>
+  <div class="flash <%= checkOk === checkTotal ? 'flash-ok' : 'flash-error' %>">
+    <p>Health check: <%= checkOk %>/<%= checkTotal %> channel(s) healthy.</p>
+    <ul class="small detail-list">
+      <% flash.checkDetails.forEach(function(d) { %>
+        <li>
+          <%= d.ok ? '&#10003;' : '&#9888;' %>
+          <strong><%= d.guildName || d.guildId %></strong>
+          #<%= d.channelName || d.channelId %>
+          <% if (!d.ok) { %>&mdash; <em><%= d.issues.join(', ') %></em><% } %>
+        </li>
+      <% }) %>
+    </ul>
+  </div>
+<% } %>
 
 <p><a href="/rooms" class="muted">&larr; All rooms</a></p>
 <h1>Room: <code><%= room %></code></h1>
@@ -177,6 +196,15 @@
     <h2>Weblink filter</h2>
     <p class="muted">Per-room URL allowlist. Affects every server in the federation.</p>
     <p><a class="btn small" href="/rooms/<%= encodeURIComponent(room) %>/weblink">Manage weblink filter &rarr;</a></p>
+  </div>
+
+  <div class="card">
+    <h2>Check permissions</h2>
+    <p class="muted">Verifies bot guild membership, channel read permissions, and webhook health for every channel in this room. Reports issues without removing anything.</p>
+    <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/check">
+      <input type="hidden" name="_csrf" value="<%= session.csrf %>">
+      <button type="submit" class="btn">Check permissions</button>
+    </form>
   </div>
 
   <div class="card">

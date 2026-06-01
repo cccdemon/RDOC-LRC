@@ -108,6 +108,31 @@ router.post('/:room/prune', requireRole('admin'), requireCsrf, async (req, res, 
   } catch (e) { next(e); }
 });
 
+router.post('/:room/check', requireRole('admin'), requireCsrf, async (req, res, next) => {
+  const roomName = String(req.params.room || '').toLowerCase();
+  try {
+    if (!ROOM_NAME_RE.test(roomName)) {
+      await res.flash({ error: 'Invalid room name.' });
+      return res.redirect('/rooms');
+    }
+    const client = liveClientOrNull();
+    if (!client) {
+      await res.flash({ error: 'Bot is not connected to Discord yet. Try again in a moment.' });
+      return res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+    }
+    const results = await rooms.checkHealth(client, { roomFilter: roomName });
+    const issueCount = results.filter(r => !r.ok).length;
+    log('WebUI', `check-health room=${roomName} checked=${results.length} issues=${issueCount} by=${req.session.userId}`);
+    audit.append({
+      userId: req.session.userId, username: req.session.username,
+      action: 'room.check-health',
+      details: { room: roomName, checked: results.length, issues: issueCount },
+    });
+    await res.flash({ checkDetails: results });
+    res.redirect(`/rooms/${encodeURIComponent(roomName)}`);
+  } catch (e) { next(e); }
+});
+
 router.get('/:room/weblink', requireRole('admin'), async (req, res, next) => {
   try {
     const roomName = String(req.params.room || '').toLowerCase();

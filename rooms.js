@@ -82,6 +82,17 @@ async function join(room, guildId, channelId, webhookUrl, webhookId, guildName =
   addToCache(entry);
 }
 
+async function updateWebhook(channelId, webhookUrl, webhookId) {
+  const entry = channelMap.get(channelId);
+  if (!entry) return;
+  entry.webhookUrl = webhookUrl;
+  entry.webhookId = webhookId;
+  await redis.hset(kChannel(channelId), { webhookUrl, webhookId });
+  const wc = webhookClients.get(channelId);
+  if (wc) { try { wc.destroy(); } catch {} }
+  webhookClients.set(channelId, new WebhookClient({ url: webhookUrl }));
+}
+
 async function leave(channelId) {
   const entry = channelMap.get(channelId);
   if (!entry) return null;
@@ -126,6 +137,73 @@ function summary() {
   const out = {};
   for (const [room, members] of roomMembers) out[room] = members.size;
   return out;
+}
+
+async function checkHealth(client, { roomFilter } = {}) {
+  if (!client) throw new Error('checkHealth requires a logged-in Discord client');
+  const all = [...channelMap.values()];
+  const entries = roomFilter ? all.filter(e => e.room === roomFilter) : all;
+  const results = [];
+
+  for (const e of entries) {
+    const item = {
+      room: e.room,
+      guildId: e.guildId,
+      channelId: e.channelId,
+      guildName: e.guildName || '',
+      channelName: e.channelName || '',
+      ok: true,
+      issues: [],
+    };
+
+    let guild = client.guilds.cache.get(e.guildId);
+    if (!guild) {
+      try { guild = await client.guilds.fetch(e.guildId); } catch {}
+    }
+    if (!guild) {
+      item.ok = false;
+      item.issues.push('bot not in guild');
+      results.push(item);
+      continue;
+    }
+
+    let channel;
+    try {
+      channel = await client.channels.fetch(e.channelId);
+    } catch (err) {
+      item.ok = false;
+      item.issues.push(`channel inaccessible (${err?.code ?? err?.message})`);
+      results.push(item);
+      continue;
+    }
+    if (!channel) {
+      item.ok = false;
+      item.issues.push('channel not found');
+      results.push(item);
+      continue;
+    }
+
+    const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
+    if (me) {
+      const perms = channel.permissionsFor(me);
+      if (perms && !perms.has('ViewChannel'))        item.issues.push('missing ViewChannel');
+      if (perms && !perms.has('ReadMessageHistory')) item.issues.push('missing ReadMessageHistory');
+    } else {
+      item.issues.push('could not resolve bot member');
+    }
+
+    try {
+      await client.fetchWebhook(e.webhookId);
+    } catch (err) {
+      if (err?.code === 10015) item.issues.push('webhook deleted');
+      else item.issues.push(`webhook error (${err?.code ?? err?.message})`);
+    }
+
+    if (item.issues.length > 0) item.ok = false;
+    results.push(item);
+  }
+
+  return results;
 }
 
 async function pruneStale(client, { roomFilter } = {}) {
@@ -323,7 +401,7 @@ async function getWeblinkConfig(scope, id) {
 }
 
 module.exports = {
-  initRooms, join, leave,
+  initRooms, join, leave, updateWebhook, checkHealth,
   getChannel, getRoomMembers, getGuildChannels, getWebhookClient, listAllFederatedGuilds,
   summary,
   pruneStale,
