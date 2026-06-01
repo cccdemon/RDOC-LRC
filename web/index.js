@@ -135,9 +135,8 @@ function mountWeb(app, redis) {
       const channelCount = roomNames.reduce((sum, name) => sum + summary[name], 0);
       const allTokens = await tokensModule.list();
       const botStatus = bot.getBotStatus();
-      // Permissions: ViewChannel + SendMessages + ManageMessages + ReadMessageHistory + ManageWebhooks
       const inviteUrl = cfg.appId
-        ? `https://discord.com/oauth2/authorize?client_id=${cfg.appId}&permissions=536947712&scope=bot+applications.commands`
+        ? `https://discord.com/oauth2/authorize?client_id=${cfg.appId}&permissions=1065689107520&integration_type=0&scope=bot`
         : null;
       res.render('dashboard', {
         title: 'Dashboard',
