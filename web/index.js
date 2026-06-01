@@ -24,6 +24,7 @@ function mountWeb(app, redis) {
     clientSecret: process.env.DISCORD_OAUTH_CLIENT_SECRET || '',
     publicUrl: (process.env.WEB_PUBLIC_URL || '').replace(/\/+$/, ''),
     bootstrapAdminId: process.env.RDOC_BOOTSTRAP_ADMIN_ID || '',
+    appId: process.env.DISCORD_APP_ID || '',
   };
 
   if (!cfg.clientId || !cfg.clientSecret || !cfg.publicUrl) {
@@ -134,9 +135,14 @@ function mountWeb(app, redis) {
       const channelCount = roomNames.reduce((sum, name) => sum + summary[name], 0);
       const allTokens = await tokensModule.list();
       const botStatus = bot.getBotStatus();
+      // Permissions: ViewChannel + SendMessages + ManageMessages + ReadMessageHistory + ManageWebhooks
+      const inviteUrl = cfg.appId
+        ? `https://discord.com/oauth2/authorize?client_id=${cfg.appId}&permissions=536947712&scope=bot+applications.commands`
+        : null;
       res.render('dashboard', {
         title: 'Dashboard',
         session: req.session,
+        inviteUrl,
         stats: {
           botReady: botStatus.ready,
           guildCount: botStatus.guilds,

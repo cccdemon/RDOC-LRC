@@ -23,6 +23,14 @@
   </table>
 </div>
 
+<% if (inviteUrl) { %>
+<div class="card">
+  <h2>Invite bot to a server</h2>
+  <p class="muted">Grants: View Channel, Send Messages, Manage Messages, Read Message History, Manage Webhooks.</p>
+  <a href="<%= inviteUrl %>" target="_blank" rel="noopener" class="btn">Invite RDOC-LC to Discord server &rarr;</a>
+</div>
+<% } %>
+
 <div class="card">
   <h2>Quick actions</h2>
   <ul class="links">
