@@ -171,40 +171,63 @@ function isOperatorUser(userId) {
 
 async function handleInteraction(interaction) {
   if (interaction.isAutocomplete?.() && interaction.commandName === 'bridge') {
-    return handleAutocomplete(interaction);
+    return handleAutocomplete(interaction).catch(e => {
+      logErr('Autocomplete', `failed user=${interaction.user?.id}: ${e.message}`);
+      return interaction.respond([]).catch(() => {});
+    });
   }
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'bridge') return;
 
   const sub = interaction.options.getSubcommand();
-  if (OPERATOR_SUBCOMMANDS.has(sub) && !isOperatorUser(interaction.user.id)) {
-    log('Security', `blocked operator-only /bridge ${sub} by user=${interaction.user.id} guild=${interaction.guildId}`);
-    return reply(interaction, 'This room-wide moderation setting is operator-only. Ask an RDOC-LRC admin to change it in the web UI or CLI.');
+
+  // Ack within Discord's 3s window BEFORE any Redis/Discord API work, otherwise
+  // a slow lookup or webhook call expires the interaction ("did not respond").
+  // All replies are ephemeral; handleRules posts its public message separately.
+  try {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  } catch (e) {
+    logErr('Interaction', `deferReply failed /bridge ${sub} user=${interaction.user.id} guild=${interaction.guildId}: ${e.message}`);
+    return;
   }
 
-  switch (sub) {
-    case 'join':           return handleJoin(interaction);
-    case 'leave':          return handleLeave(interaction);
-    case 'list':           return handleList(interaction);
-    case 'rooms':          return handleRooms(interaction);
-    case 'audit-channel':  return handleAuditChannel(interaction);
-    case 'kick':           return handleKick(interaction);
-    case 'rules':          return handleRules(interaction);
-    case 'weblink-mode':   return handleWeblinkMode(interaction);
-    case 'weblink-add':    return handleWeblinkAdd(interaction);
-    case 'weblink-remove': return handleWeblinkRemove(interaction);
-    case 'weblink-list':   return handleWeblinkList(interaction);
-    case 'weblink-clear':  return handleWeblinkClear(interaction);
-    case 'mention-mode':   return handleMentionMode(interaction);
-    case 'ban-user':       return handleBanUser(interaction);
-    case 'unban-user':     return handleUnbanUser(interaction);
-    case 'banned-users':   return handleBannedUsers(interaction);
-    case 'badword-mode':   return handleBadwordMode(interaction);
-    case 'badword-add':    return handleBadwordAdd(interaction);
-    case 'badword-remove': return handleBadwordRemove(interaction);
-    case 'badword-list':   return handleBadwordList(interaction);
-    case 'badword-clear':  return handleBadwordClear(interaction);
-    default:               return reply(interaction, `Unknown subcommand: ${sub}`);
+  const t0 = Date.now();
+  try {
+    if (OPERATOR_SUBCOMMANDS.has(sub) && !isOperatorUser(interaction.user.id)) {
+      log('Security', `blocked operator-only /bridge ${sub} by user=${interaction.user.id} guild=${interaction.guildId}`);
+      return await reply(interaction, 'This room-wide moderation setting is operator-only. Ask an RDOC-LRC admin to change it in the web UI or CLI.');
+    }
+
+    switch (sub) {
+      case 'join':           return await handleJoin(interaction);
+      case 'leave':          return await handleLeave(interaction);
+      case 'list':           return await handleList(interaction);
+      case 'rooms':          return await handleRooms(interaction);
+      case 'audit-channel':  return await handleAuditChannel(interaction);
+      case 'kick':           return await handleKick(interaction);
+      case 'rules':          return await handleRules(interaction);
+      case 'weblink-mode':   return await handleWeblinkMode(interaction);
+      case 'weblink-add':    return await handleWeblinkAdd(interaction);
+      case 'weblink-remove': return await handleWeblinkRemove(interaction);
+      case 'weblink-list':   return await handleWeblinkList(interaction);
+      case 'weblink-clear':  return await handleWeblinkClear(interaction);
+      case 'mention-mode':   return await handleMentionMode(interaction);
+      case 'ban-user':       return await handleBanUser(interaction);
+      case 'unban-user':     return await handleUnbanUser(interaction);
+      case 'banned-users':   return await handleBannedUsers(interaction);
+      case 'badword-mode':   return await handleBadwordMode(interaction);
+      case 'badword-add':    return await handleBadwordAdd(interaction);
+      case 'badword-remove': return await handleBadwordRemove(interaction);
+      case 'badword-list':   return await handleBadwordList(interaction);
+      case 'badword-clear':  return await handleBadwordClear(interaction);
+      default:               return await reply(interaction, `Unknown subcommand: ${sub}`);
+    }
+  } catch (e) {
+    logErr('Interaction', `/bridge ${sub} failed user=${interaction.user.id} guild=${interaction.guildId} (${Date.now() - t0}ms): ${e.stack || e.message}`);
+    return reply(interaction, 'Something went wrong handling that command. The operator has been notified via the logs.')
+      .catch(err => logErr('Interaction', `failed to send error reply: ${err.message}`));
+  } finally {
+    log('Interaction', `/bridge ${sub} by user=${interaction.user.id} guild=${interaction.guildId} (${Date.now() - t0}ms)`);
   }
 }
 
@@ -294,10 +317,13 @@ async function handleRules(interaction) {
     return reply(interaction, `No rules set for room "${entry.room}". Ask the operator to set them.`);
   }
 
-  return interaction.reply({
+  // Rules are a PUBLIC message; the deferred interaction reply is ephemeral, so
+  // post the rules into the channel and confirm to the runner privately.
+  await channel.send({
     content: announcer.formatRules(entry.room, rulesText),
     allowedMentions: { parse: [] },
   });
+  return reply(interaction, `Posted the rules for room "${entry.room}".`);
 }
 
 async function handleLeave(interaction) {
@@ -713,6 +739,11 @@ async function handleBadwordClear(interaction) {
 }
 
 function reply(interaction, content) {
+  // After deferReply the interaction is already acked; edit it instead of
+  // re-replying (a second reply throws InteractionAlreadyReplied).
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply({ content });
+  }
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
