@@ -109,7 +109,7 @@ function mountWeb(app, redis) {
       });
       log('WebUI', `login userId=${me.id} username=${me.username} role=${user.role}`);
       audit.append({ userId: me.id, username: me.username, action: 'auth.login', details: { role: user.role } });
-      const safe = /^\/[^/].*/.test(returnTo) ? returnTo : '/';
+      const safe = /^\/[^/\\]/.test(returnTo) ? returnTo : '/';
       res.redirect(safe);
     } catch (e) {
       logErr('WebUI', `callback: ${e.message}`);

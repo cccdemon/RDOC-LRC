@@ -13,6 +13,7 @@ const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 let client = null;
 let ready = false;
 let sweepTimer = null;
+let commandsRegistered = false;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -140,13 +141,21 @@ async function startBot({ token, appId }) {
     partials: [Partials.Channel, Partials.Message],
   });
 
-  client.once('clientReady', async (c) => {
+  const handleReady = async (c) => {
+    if (commandsRegistered) return;
+    commandsRegistered = true;
     log('Discord', `Logged in as ${c.user.tag} — ${c.guilds.cache.size} guild(s)`);
     ready = true;
     audit.init(c);
     await registerCommands({ token, appId });
+    setTimeout(() => {
+      registerCommands({ token, appId }).catch(e => logErr('Commands', `Retry register failed: ${e.message}`));
+    }, 15000);
     scheduleTokenSweep();
-  });
+  };
+
+  client.once('ready', handleReady);
+  client.once('clientReady', handleReady);
 
   client.on('messageCreate', (m) => onMessage(m).catch(e => logErr('Relay', e.message)));
   client.on('interactionCreate', (i) => handleInteraction(i).catch(e => logErr('Interaction', e.message)));
@@ -315,12 +324,25 @@ function getBotStatus() {
 }
 
 async function registerCommands({ token, appId }) {
-  try {
-    const rest = new REST({ version: '10' }).setToken(token);
-    await rest.put(Routes.applicationCommands(appId), { body: commands.map(c => c.toJSON()) });
-    log('Commands', `Registered ${commands.length} global slash command(s)`);
-  } catch (e) {
-    logErr('Commands', `Register failed: ${e.message}`);
+  if (!token || !appId) {
+    logErr('Commands', 'Register skipped: missing DISCORD_TOKEN or DISCORD_APP_ID');
+    return;
+  }
+
+  const body = commands.map(c => c.toJSON());
+  const rest = new REST({ version: '10' }).setToken(token);
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await rest.put(Routes.applicationCommands(appId), { body });
+      log('Commands', `Registered ${commands.length} global slash command(s)`);
+      return;
+    } catch (e) {
+      const retryable = e?.status === 429 || e?.code === 50001 || e?.code === 50035;
+      logErr('Commands', `Register attempt ${attempt}/3 failed: ${e.message}`);
+      if (!retryable || attempt === 3) return;
+      await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+    }
   }
 }
 

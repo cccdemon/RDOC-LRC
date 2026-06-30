@@ -589,7 +589,7 @@ async function handleWeblinkList(interaction) {
     let response = `**Weblink filtering for room federation "${entry.room}":**\nMode: ${modeName}`;
 
     if (config.list.length > 0) {
-      response += '\n\n**Patterns:**\n' + config.list.map(d => `- ${d}`).join('\n');
+      response += '\n\n**Patterns:**\n' + config.list.map(d => `- \`${d}\``).join('\n');
     } else {
       response += '\n\n**Patterns:** (none configured)';
     }
