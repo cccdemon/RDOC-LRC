@@ -15,20 +15,49 @@ function extractDomain(url) {
   }
 }
 
-// Check if domain matches a pattern (supports wildcards like *.example.com)
-function domainMatches(domain, pattern) {
-  if (!domain || !pattern) return false;
+// Split a weblink allowlist pattern into host and optional path portions.
+function splitPattern(pattern) {
+  const slashIndex = pattern.indexOf('/');
+  if (slashIndex === -1) {
+    return { hostPattern: pattern, pathPattern: '' };
+  }
+  return {
+    hostPattern: pattern.slice(0, slashIndex),
+    pathPattern: pattern.slice(slashIndex)
+  };
+}
 
-  // Exact match
-  if (domain === pattern) return true;
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  // Wildcard match (*.example.com matches sub.example.com)
-  if (pattern.startsWith('*.')) {
-    const baseDomain = pattern.slice(2);
+function hostMatches(domain, hostPattern) {
+  if (!domain || !hostPattern) return false;
+
+  if (domain === hostPattern) return true;
+  if (hostPattern.startsWith('*.')) {
+    const baseDomain = hostPattern.slice(2);
     return domain === baseDomain || domain.endsWith('.' + baseDomain);
   }
 
   return false;
+}
+
+function pathMatches(pathname, pathPattern) {
+  if (!pathPattern) return true;
+  const pattern = pathPattern.startsWith('/') ? pathPattern : '/' + pathPattern;
+  const regex = new RegExp('^' + pattern.split('*').map(escapeRegExp).join('.*') + '$');
+  return regex.test(pathname || '/');
+}
+
+function patternMatches(url, pattern) {
+  if (!url || !pattern) return false;
+  const normalized = String(pattern).toLowerCase().trim();
+  if (!normalized) return false;
+
+  const { hostPattern, pathPattern } = splitPattern(normalized);
+  if (!hostMatches(url.domain, hostPattern)) return false;
+  return pathMatches(url.pathname, pathPattern);
 }
 
 // Extract all URLs from message content
@@ -36,10 +65,18 @@ function extractUrls(content) {
   if (!content) return [];
 
   const matches = content.match(URL_REGEX) || [];
-  return matches.map(url => ({
-    full: url,
-    domain: extractDomain(url)
-  })).filter(item => item.domain !== null);
+  return matches.map(url => {
+    try {
+      const parsed = new URL(url);
+      return {
+        full: url,
+        domain: parsed.hostname.toLowerCase(),
+        pathname: parsed.pathname || '/'
+      };
+    } catch (e) {
+      return { full: url, domain: null, pathname: '/' };
+    }
+  }).filter(item => item.domain !== null);
 }
 
 // Check if any URL in the message violates the weblink policy
@@ -53,7 +90,7 @@ function checkWeblinkPolicy(urls, mode, list) {
   for (const url of urls) {
     let isMatch = false;
     for (const pattern of list) {
-      if (domainMatches(url.domain, pattern)) {
+      if (patternMatches(url, pattern)) {
         isMatch = true;
         break;
       }
@@ -62,7 +99,7 @@ function checkWeblinkPolicy(urls, mode, list) {
     if (mode === 'allowlist' && !isMatch) {
       return {
         allowed: false,
-        reason: `Domain "${url.domain}" is not in the allowlist`,
+        reason: `URL "${url.full}" is not in the allowlist`,
         blockedUrl: url.full
       };
     }
@@ -74,6 +111,6 @@ function checkWeblinkPolicy(urls, mode, list) {
 module.exports = {
   extractUrls,
   extractDomain,
-  domainMatches,
+  patternMatches,
   checkWeblinkPolicy
 };

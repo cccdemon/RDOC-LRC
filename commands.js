@@ -68,15 +68,15 @@ const commands = [
         )))
     .addSubcommand(sub => sub
       .setName('weblink-add')
-      .setDescription('Add a domain to the weblink filter list for this room federation')
+      .setDescription('Add a pattern to the weblink filter list for this room federation')
       .addStringOption(o => o.setName('domain')
-        .setDescription('Domain to add (e.g., example.com or *.example.com for wildcards)')
+        .setDescription('Pattern to add (e.g., example.com, *.example.com or *.example.com/*/clips/*)')
         .setRequired(true)))
     .addSubcommand(sub => sub
       .setName('weblink-remove')
-      .setDescription('Remove a domain from the weblink filter list for this room federation')
+      .setDescription('Remove a pattern from the weblink filter list for this room federation')
       .addStringOption(o => o.setName('domain')
-        .setDescription('Domain to remove')
+        .setDescription('Pattern to remove')
         .setRequired(true)))
     .addSubcommand(sub => sub
       .setName('weblink-list')
@@ -589,9 +589,9 @@ async function handleWeblinkList(interaction) {
     let response = `**Weblink filtering for room federation "${entry.room}":**\nMode: ${modeName}`;
 
     if (config.list.length > 0) {
-      response += '\n\n**Domains:**\n' + config.list.map(d => `- ${d}`).join('\n');
+      response += '\n\n**Patterns:**\n' + config.list.map(d => `- ${d}`).join('\n');
     } else {
-      response += '\n\n**Domains:** (none configured)';
+      response += '\n\n**Patterns:** (none configured)';
     }
 
     return reply(interaction, response);

@@ -167,6 +167,8 @@ Token consumption is atomic via a Redis Lua script — no race condition between
 
 Browser-based admin UI mounted on the same port as `/health`. Provides everything the CLI does — token issuance, room/member listing, prune, weblink allowlist — plus a live audit log. Disabled unless `DISCORD_OAUTH_CLIENT_ID`, `DISCORD_OAUTH_CLIENT_SECRET`, and `WEB_PUBLIC_URL` are all set.
 
+Weblink allowlist entries can now be host-only patterns like `example.com` or `*.example.com`, and also path-aware patterns such as `*.example.com/*/clips/*`.
+
 **Auth.** Discord OAuth (`identify` scope only). The user signs in with their Discord account; only Discord user IDs already in the web UI users registry can sign in. Roles: `admin` (everything) or `moderator` (create join/kick tokens + view rooms/members). Bootstrap an initial admin via `RDOC_BOOTSTRAP_ADMIN_ID`.
 
 **Setup.**

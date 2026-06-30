@@ -21,6 +21,21 @@ const kRoomMentionMode = (room) => `rdoc:room:${room}:mention_mode`;
 const ROOM_RULES_MAX = 1900;
 const BADWORD_MODES = ['off', 'block', 'mask'];
 const MENTION_MODES = ['off', 'names-only', 'resolve-users'];
+const WEBLINK_PATTERN_RE = /^(\*\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?:\/[^\s]*)?$/i;
+
+function validateWeblinkPattern(pattern) {
+  if (!pattern || typeof pattern !== 'string') {
+    throw new Error('Weblink pattern must be a non-empty string');
+  }
+  const normalized = pattern.toLowerCase().trim();
+  if (!normalized) {
+    throw new Error('Weblink pattern cannot be empty');
+  }
+  if (!WEBLINK_PATTERN_RE.test(normalized)) {
+    throw new Error('Invalid weblink pattern. Use formats like example.com, *.example.com or *.example.com/*/clips/*');
+  }
+  return normalized;
+}
 
 async function initRooms(redisClient) {
   redis = redisClient;
@@ -365,22 +380,13 @@ async function getWeblinkMode(scope, id) {
   return mode || 'none'; // Default to no filtering
 }
 
-async function addToWeblinkList(scope, id, domain) {
-  if (!domain || typeof domain !== 'string') {
-    throw new Error('Domain must be a non-empty string');
-  }
-  const normalized = domain.toLowerCase().trim();
-  if (!normalized) {
-    throw new Error('Domain cannot be empty after trimming');
-  }
+async function addToWeblinkList(scope, id, pattern) {
+  const normalized = validateWeblinkPattern(pattern);
   await redis.sadd(kWeblinkList(scope, id), normalized);
 }
 
-async function removeFromWeblinkList(scope, id, domain) {
-  if (!domain || typeof domain !== 'string') {
-    throw new Error('Domain must be a non-empty string');
-  }
-  const normalized = domain.toLowerCase().trim();
+async function removeFromWeblinkList(scope, id, pattern) {
+  const normalized = validateWeblinkPattern(pattern);
   await redis.srem(kWeblinkList(scope, id), normalized);
 }
 

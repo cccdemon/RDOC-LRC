@@ -28,13 +28,13 @@
 <div class="card">
   <h2>Allowlist (<%= config.list.length %>)</h2>
   <% if (config.list.length === 0) { %>
-    <p class="muted">No domains in the allowlist.</p>
+    <p class="muted">No patterns in the allowlist.</p>
     <% if (config.mode === 'allowlist') { %>
-      <p class="error">Mode is "allowlist" but the list is empty &mdash; <strong>every URL is blocked</strong>. Add domains below or switch the mode to "none".</p>
+      <p class="error">Mode is "allowlist" but the list is empty &mdash; <strong>every URL is blocked</strong>. Add patterns below or switch the mode to "none".</p>
     <% } %>
   <% } else { %>
     <table class="data">
-      <thead><tr><th>Domain</th><th></th></tr></thead>
+      <thead><tr><th>Pattern</th><th></th></tr></thead>
       <tbody>
         <% config.list.slice().sort().forEach(function(d) { %>
           <tr>
@@ -54,13 +54,13 @@
 </div>
 
 <div class="card">
-  <h2>Add domain</h2>
+  <h2>Add allowlist pattern</h2>
   <form method="post" action="/rooms/<%= encodeURIComponent(room) %>/weblink/add">
     <input type="hidden" name="_csrf" value="<%= session.csrf %>">
-    <label>Domain
-      <input name="domain" required placeholder="example.com or *.example.com" autocomplete="off">
+    <label>Pattern
+      <input name="domain" required placeholder="example.com, *.example.com or *.example.com/*/clips/*" autocomplete="off">
     </label>
-    <p class="muted small">Wildcard form <code>*.example.com</code> matches <code>example.com</code> itself and any subdomain. Plain <code>example.com</code> matches only the exact host.</p>
+    <p class="muted small">Wildcard host <code>*.example.com</code> matches <code>example.com</code> and subdomains. Add a path suffix like <code>*.example.com/*/clips/*</code> to allow only matching URLs.</p>
     <button type="submit" class="btn primary">Add to allowlist</button>
   </form>
 </div>

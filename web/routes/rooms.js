@@ -8,7 +8,7 @@ const { requireAuth, requireRole, requireCsrf } = require('../middleware');
 const { log } = require('../../log');
 
 const ROOM_NAME_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
-const DOMAIN_RE = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
+const PATTERN_RE = /^(\*\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?:\/[^\s]*)?$/i;
 const WEBLINK_MODES = ['none', 'allowlist'];
 const USER_ID_RE = /^\d{17,20}$/;
 
@@ -194,19 +194,19 @@ router.post('/:room/weblink/add', requireRole('admin'), requireCsrf, async (req,
   try {
     const roomName = await ensureValidRoom(req, res);
     if (!roomName) return;
-    const domain = String(req.body.domain || '').trim().toLowerCase();
-    if (!DOMAIN_RE.test(domain)) {
-      await res.flash({ error: `Invalid domain "${domain}". Use formats like example.com or *.example.com.` });
+    const pattern = String(req.body.domain || '').trim().toLowerCase();
+    if (!PATTERN_RE.test(pattern)) {
+      await res.flash({ error: `Invalid allowlist pattern "${pattern}". Use formats like example.com, *.example.com or *.example.com/*/clips/*.` });
       return res.redirect(`/rooms/${encodeURIComponent(roomName)}/weblink`);
     }
-    await rooms.addToWeblinkList('room', roomName, domain);
-    log('WebUI', `weblink add room=${roomName} domain=${domain} by=${req.session.userId}`);
+    await rooms.addToWeblinkList('room', roomName, pattern);
+    log('WebUI', `weblink add room=${roomName} pattern=${pattern} by=${req.session.userId}`);
     audit.append({
       userId: req.session.userId, username: req.session.username,
       action: 'weblink.add-domain',
-      details: { room: roomName, domain },
+      details: { room: roomName, domain: pattern },
     });
-    await res.flash({ ok: `Added "${domain}" to allowlist for room "${roomName}".` });
+    await res.flash({ ok: `Added "${pattern}" to allowlist for room "${roomName}".` });
     res.redirect(`/rooms/${encodeURIComponent(roomName)}/weblink`);
   } catch (e) { next(e); }
 });
